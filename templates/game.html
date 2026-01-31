@@ -18,6 +18,11 @@
     .small { opacity:.85; font-size:.95rem; }
     .btn { background:#000; color:#00ff66; border:1px solid #00ff66; padding:10px 12px; border-radius:10px; cursor:pointer; }
     .btn:hover { opacity:.9; }
+    * { box-sizing: border-box; }
+    input { width:100%; box-sizing:border-box; }
+    .row { align-items:flex-start; }
+    .panel { overflow:hidden; }
+
   </style>
 </head>
 <body>
@@ -32,14 +37,14 @@
       <div class="panel">
         <div class="small">Terminal</div>
         <h3 id="line">Connexion...</h3>
-        <div class="small">Mot secret : <span id="word">---</span></div>
-        <div style="margin-top:10px">
-          <input id="input" autocomplete="off" placeholder="Tape le mot puis Entrée" autofocus />
-        </div>
+        <div class="small">Mot à taper : <span id="word">---</span></div>
+        <input id="input" autocomplete="off" placeholder="Écris puis Entrée" autofocus />
         <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
-          <button class="btn" id="copyBtn">Copier lien 📋</button>
+            <button class="btn" id="startBtn" style="display:none;">▶ Lancer la partie</button>
+            <button class="btn" id="copyBtn">Copier lien 📋</button>
         </div>
-        <div class="small" id="status" style="margin-top:10px;"></div>
+        <div class="small" id="roundInfo" style="margin-top:10px;"></div>
+        <div class="small" id="status" style="margin-top:6px;"></div>
       </div>
 
       <div class="panel">

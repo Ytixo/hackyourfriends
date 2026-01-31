@@ -1,6 +1,5 @@
 (() => {
   const socket = io();
-
   const room = (window.GAME_ROOM || "").trim().toUpperCase();
   const username = (prompt("Pseudo ?") || "Player").trim() || "Player";
 
@@ -10,31 +9,55 @@
   const timerEl = document.getElementById("timer");
   const scoresEl = document.getElementById("scores");
   const statusEl = document.getElementById("status");
+  const roundInfoEl = document.getElementById("roundInfo");
+
   const roomLinkEl = document.getElementById("roomLink");
   const copyBtn = document.getElementById("copyBtn");
-  const timeLimitInput = document.getElementById("timeLimitInput");
-  const setTimeBtn = document.getElementById("setTimeBtn");
+  const startBtn = document.getElementById("startBtn");
 
-  // ---- room link
+  // ----- link
   const link = `${window.location.origin}/room/${room}`;
   roomLinkEl.textContent = link;
 
-  copyBtn.addEventListener("click", async () => {
+  copyBtn?.addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(link);
       flashStatus("Lien copié 📋", 1200);
     } catch {
-      flashStatus("Copie impossible (permissions navigateur) 😅", 1800);
+      flashStatus("Copie impossible 😅", 1500);
     }
   });
 
-  // ---- timer (client-side display only; server decides timeout)
+  // ----- helper UI
+  function flashStatus(msg, ms = 1200) {
+    statusEl.textContent = msg;
+    if (ms > 0) {
+      setTimeout(() => {
+        if (statusEl.textContent === msg) statusEl.textContent = "";
+      }, ms);
+    }
+  }
+
+  // ----- typewriter animation (terminal line)
+  let typeTimer = null;
+  function typewrite(el, text, cps = 55) { // chars per second
+    clearInterval(typeTimer);
+    el.textContent = "";
+    let i = 0;
+    const interval = Math.max(5, Math.floor(1000 / cps));
+    typeTimer = setInterval(() => {
+      i++;
+      el.textContent = text.slice(0, i);
+      if (i >= text.length) clearInterval(typeTimer);
+    }, interval);
+  }
+
+  // ----- timer display (server-authoritative)
   let timerInterval = null;
   function startTimer(seconds) {
     clearInterval(timerInterval);
     let t = Number(seconds) || 0;
     timerEl.textContent = String(t);
-
     timerInterval = setInterval(() => {
       t -= 1;
       if (t < 0) {
@@ -45,7 +68,7 @@
     }, 1000);
   }
 
-  // ---- scoreboard
+  // ----- scoreboard
   function renderScores(players) {
     scoresEl.innerHTML = "";
     players.forEach(p => {
@@ -55,18 +78,8 @@
     });
   }
 
-  function flashStatus(msg, ms=1500) {
-    statusEl.textContent = msg;
-    if (ms > 0) {
-      setTimeout(() => {
-        if (statusEl.textContent === msg) statusEl.textContent = "";
-      }, ms);
-    }
-  }
-
-  // ---- join
+  // ----- join
   if (!room) {
-    alert("Room invalide. Reviens à l'accueil.");
     window.location.href = "/";
     return;
   }
@@ -74,71 +87,78 @@
   socket.emit("join_room", { room, username });
 
   socket.on("joined", (data) => {
-    flashStatus(`Connecté en tant que ${username} ✅`, 1200);
-    if (data && data.time_limit) {
-      timeLimitInput.value = data.time_limit;
-    }
-  });
+    const isHost = !!data?.is_host;
+    const started = !!data?.started;
 
-  // ---- receive public line / private word
-  socket.on("public_line", (data) => {
-    lineEl.textContent = data?.line ?? "";
-    inputEl.value = "";
+    if (startBtn) {
+      startBtn.style.display = (isHost && !started) ? "inline-block" : "none";
+      startBtn.onclick = () => socket.emit("start_game", { room });
+    }
+
+    flashStatus(`Connecté ✅ (${username})`, 1000);
     inputEl.focus();
   });
 
-  socket.on("private_word", (data) => {
-    wordEl.textContent = data?.word ?? "---";
+  // lobby state updates
+  socket.on("lobby_state", (data) => {
+    if (!data?.started) {
+      roundInfoEl.textContent = `Lobby 👥 (${data.players?.length || 0} joueurs) — Host: ${data.host_name || "?"}`;
+      wordEl.textContent = "---";
+      lineEl.textContent = "En attente du lancement...";
+      timerEl.textContent = "0";
+    }
   });
 
-  // ---- timer start
-  socket.on("timer_start", (data) => {
-    startTimer(data?.seconds ?? 0);
+  socket.on("game_started", (data) => {
+    flashStatus("▶ Partie lancée !", 1200);
+  });
+
+  // ----- rounds
+  socket.on("round_start", (data) => {
+    const line = data?.line ?? "";
+    const word = data?.word ?? "";
+    const idx = data?.round_index ?? 0;
+    const total = data?.round_total ?? 0;
+    const seconds = data?.seconds ?? 0;
+
+    typewrite(lineEl, line, 70);        // animation terminal
+    wordEl.textContent = word;          // tout le monde voit le mot
+    roundInfoEl.textContent = `Round ${idx}/${total} ⚡`;
+    inputEl.value = "";
+    inputEl.focus();
+    startTimer(seconds);
   });
 
   socket.on("round_timeout", () => {
-    flashStatus("⏱️ Temps écoulé ! Nouveau round...", 1200);
-    // server may auto-start, but we can request to be safe
-    socket.emit("new_round", { room });
+    flashStatus("⏱️ Trop tard !", 900);
   });
 
-  // ---- winner
-  socket.on("winner", (data) => {
-    const name = data?.player ?? "Quelqu'un";
-    const word = data?.word ?? "";
-    flashStatus(`🏆 ${name} a gagné ! (${word})`, 1600);
+  socket.on("round_winner", (data) => {
+    flashStatus(`🏆 ${data.player} a hack en ${data.ms}ms !`, 1600);
   });
 
-  // ---- wrong feedback (private)
   socket.on("wrong", () => {
-    flashStatus("❌ Mauvais mot", 700);
+    flashStatus("❌ Mauvais mot", 500);
   });
 
-  // ---- scoreboard updates
   socket.on("scoreboard", (data) => {
     renderScores(data?.players ?? []);
   });
 
-  // ---- set time limit
-  setTimeBtn.addEventListener("click", () => {
-    const val = Number(timeLimitInput.value);
-    if (!Number.isFinite(val)) return;
-    socket.emit("set_time_limit", { room, seconds: val });
-  });
-
-  socket.on("time_limit_updated", (data) => {
-    const s = data?.seconds;
-    if (s) {
-      timeLimitInput.value = s;
-      flashStatus(`⏱️ Temps par round: ${s}s`, 1200);
+  socket.on("game_over", (data) => {
+    flashStatus("✅ Partie terminée !", 2000);
+    const top = (data?.players ?? [])[0];
+    if (top) {
+      alert(`🏁 Fin de partie !\nGagnant: ${top.name} (${top.score} pts)`);
+    } else {
+      alert("🏁 Fin de partie !");
     }
   });
 
-  // ---- input send
+  // ----- input
   inputEl.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
-      const text = inputEl.value || "";
-      socket.emit("player_input", { room, input: text });
+      socket.emit("player_input", { room, input: inputEl.value });
       inputEl.value = "";
     }
   });

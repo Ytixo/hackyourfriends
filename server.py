@@ -4,14 +4,10 @@ import string
 import time
 
 from flask import Flask, render_template, redirect, request
-from flask_socketio import SocketIO, emit, join_room as socket_join_room, leave_room as socket_leave_room
+from flask_socketio import SocketIO, emit, join_room as socket_join_room
 
-# -----------------------------
-# App / SocketIO setup
-# -----------------------------
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret")
-
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
 # -----------------------------
@@ -38,18 +34,9 @@ lignes_code = [
 # -----------------------------
 # Rooms state
 # -----------------------------
-# rooms[room_id] = {
-#   "players": {sid: username},
-#   "scores": {sid: int},
-#   "current_word": str,
-#   "current_line": str,
-#   "round_active": bool,
-#   "time_limit": int,
-#   "round_token": str,  # unique id to avoid race conditions with timers
-# }
 rooms = {}
-
-DEFAULT_TIME_LIMIT = 7  # seconds
+DEFAULT_TIME_LIMIT = 7
+ROUNDS_TOTAL = 30
 
 
 def generate_room_code(n=5):
@@ -59,33 +46,46 @@ def generate_room_code(n=5):
 def ensure_room(room_id: str):
     if room_id not in rooms:
         rooms[room_id] = {
-            "players": {},
-            "scores": {},
+            "players": {},        # sid -> username
+            "scores": {},         # sid -> int
+            "host_sid": None,
+            "started": False,
+            "time_limit": DEFAULT_TIME_LIMIT,
+
+            "round_index": 0,
+            "round_total": ROUNDS_TOTAL,
+            "round_active": False,
             "current_word": "",
             "current_line": "",
-            "round_active": False,
-            "time_limit": DEFAULT_TIME_LIMIT,
             "round_token": "",
+            "round_start_ts": 0.0,
         }
 
 
 def public_scoreboard(room_id: str):
-    """Return scoreboard as a list of dicts for easy client rendering."""
     r = rooms[room_id]
-    result = []
-    for sid, name in r["players"].items():
-        result.append({"name": name, "score": r["scores"].get(sid, 0)})
-    # sort by score desc then name
-    result.sort(key=lambda x: (-x["score"], x["name"].lower()))
-    return result
+    players = [{"name": r["players"][sid], "score": r["scores"].get(sid, 0)} for sid in r["players"]]
+    players.sort(key=lambda x: (-x["score"], x["name"].lower()))
+    return players
 
 
-def broadcast_scoreboard(room_id: str):
-    emit("scoreboard", {"players": public_scoreboard(room_id)}, room=room_id)
+def lobby_payload(room_id: str):
+    r = rooms[room_id]
+    return {
+        "started": r["started"],
+        "round_index": r["round_index"],
+        "round_total": r["round_total"],
+        "players": [{"name": r["players"][sid]} for sid in r["players"]],
+        "host_name": r["players"].get(r["host_sid"], "Host"),
+    }
+
+
+def emit_scoreboard(room_id: str):
+    socketio.emit("scoreboard", {"players": public_scoreboard(room_id)}, room=room_id)
 
 
 # -----------------------------
-# HTTP routes (pages)
+# HTTP routes
 # -----------------------------
 @app.route("/")
 def home():
@@ -107,43 +107,57 @@ def room(room_id):
 # -----------------------------
 # Round logic
 # -----------------------------
-def end_round_if_still_active(room_id: str, token: str):
-    """Called after timer; ends round only if token matches current round."""
+def start_new_round(room_id: str):
+    r = rooms[room_id]
+    if not r["started"]:
+        return
+    if r["round_active"]:
+        return
+
+    if r["round_index"] >= r["round_total"]:
+        end_game(room_id)
+        return
+
+    r["round_index"] += 1
+    r["current_word"] = random.choice(mots_cles)
+    r["current_line"] = random.choice(lignes_code)
+    r["round_active"] = True
+    r["round_token"] = generate_room_code(10)
+    r["round_start_ts"] = time.time()
+
+    socketio.emit("round_start", {
+        "line": r["current_line"],
+        "word": r["current_word"],
+        "round_index": r["round_index"],
+        "round_total": r["round_total"],
+        "seconds": r["time_limit"],
+    }, room=room_id)
+
+    socketio.start_background_task(round_timer_task, room_id, r["round_token"], r["time_limit"])
+
+
+def round_timer_task(room_id: str, token: str, seconds: int):
+    socketio.sleep(seconds)
     if room_id not in rooms:
         return
     r = rooms[room_id]
     if r["round_active"] and r["round_token"] == token:
         r["round_active"] = False
         socketio.emit("round_timeout", {}, room=room_id)
+        socketio.start_background_task(_delayed_next_round, room_id, 0.7)
 
 
-def round_timer_task(room_id: str, token: str, seconds: int):
-    socketio.sleep(seconds)
-    end_round_if_still_active(room_id, token)
+def _delayed_next_round(room_id: str, delay: float):
+    socketio.sleep(delay)
+    if room_id in rooms:
+        start_new_round(room_id)
 
 
-def start_new_round(room_id: str):
+def end_game(room_id: str):
     r = rooms[room_id]
-    if r["round_active"]:
-        return
-
-    r["current_word"] = random.choice(mots_cles)
-    r["current_line"] = random.choice(lignes_code)
-    r["round_active"] = True
-    r["round_token"] = generate_room_code(10)  # token anti-race
-
-    # Tout le monde voit la ligne
-    socketio.emit("public_line", {"line": r["current_line"]}, room=room_id)
-
-    # Chaque joueur reçoit le mot en privé (sid->room is implicit; emit without room targets sender)
-    # On l’envoie à tous les membres, mais *chacun* le reçoit via son socket : c'est OK
-    # car on va l’envoyer en "private_word" à chaque sid individuellement.
-    for sid in list(r["players"].keys()):
-        socketio.emit("private_word", {"word": r["current_word"]}, to=sid)
-
-    # Start timer (server-authoritative)
-    socketio.emit("timer_start", {"seconds": r["time_limit"]}, room=room_id)
-    socketio.start_background_task(round_timer_task, room_id, r["round_token"], r["time_limit"])
+    r["round_active"] = False
+    r["started"] = False
+    socketio.emit("game_over", {"players": public_scoreboard(room_id)}, room=room_id)
 
 
 # -----------------------------
@@ -164,45 +178,53 @@ def handle_join(data):
     r["players"][request.sid] = username
     r["scores"].setdefault(request.sid, 0)
 
-    # Inform client they joined + send state
-    emit("joined", {"room": room_id, "time_limit": r["time_limit"]})
-    broadcast_scoreboard(room_id)
+    if r["host_sid"] is None:
+        r["host_sid"] = request.sid
 
-    # If no round running, start one
-    if not r["round_active"]:
-        start_new_round(room_id)
-    else:
-        # Send current line + timer restart info (client will just show the last "timer_start")
-        emit("public_line", {"line": r["current_line"]})
-        emit("private_word", {"word": r["current_word"]})
+    emit("joined", {
+        "room": room_id,
+        "is_host": request.sid == r["host_sid"],
+        "started": r["started"],
+        "time_limit": r["time_limit"],
+        "round_total": r["round_total"],
+    })
+
+    socketio.emit("lobby_state", lobby_payload(room_id), room=room_id)
+    emit_scoreboard(room_id)
+
+
+@socketio.on("start_game")
+def start_game(data):
+    room_id = (data.get("room") or "").strip().upper()
+    if room_id not in rooms:
+        return
+
+    r = rooms[room_id]
+    if request.sid != r["host_sid"]:
+        return
+    if r["started"]:
+        return
+
+    r["started"] = True
+    r["round_index"] = 0
+    socketio.emit("game_started", {"round_total": r["round_total"]}, room=room_id)
+    start_new_round(room_id)
 
 
 @socketio.on("set_time_limit")
 def handle_set_time_limit(data):
     room_id = (data.get("room") or "").strip().upper()
-    seconds = data.get("seconds")
-
     if room_id not in rooms:
         return
 
     try:
-        seconds = int(seconds)
+        seconds = int(data.get("seconds"))
     except Exception:
         return
 
-    # clamp
     seconds = max(3, min(30, seconds))
     rooms[room_id]["time_limit"] = seconds
-
-    emit("time_limit_updated", {"seconds": seconds}, room=room_id)
-
-
-@socketio.on("new_round")
-def handle_new_round(data):
-    room_id = (data.get("room") or "").strip().upper()
-    if room_id not in rooms:
-        return
-    start_new_round(room_id)
+    socketio.emit("time_limit_updated", {"seconds": seconds}, room=room_id)
 
 
 @socketio.on("player_input")
@@ -218,48 +240,45 @@ def handle_input(data):
         return
 
     if text == r["current_word"]:
-        # Winner
         r["round_active"] = False
         r["scores"][request.sid] = r["scores"].get(request.sid, 0) + 1
+
         winner_name = r["players"].get(request.sid, "Unknown")
+        elapsed_ms = int((time.time() - r["round_start_ts"]) * 1000)
 
-        socketio.emit("winner", {"player": winner_name, "word": r["current_word"]}, room=room_id)
-        broadcast_scoreboard(room_id)
+        socketio.emit("round_winner", {
+            "player": winner_name,
+            "ms": elapsed_ms,
+            "word": r["current_word"],
+        }, room=room_id)
 
-        # Start next round shortly for better feel
-        socketio.start_background_task(_delayed_next_round, room_id, 0.8)
+        emit_scoreboard(room_id)
+        socketio.start_background_task(_delayed_next_round, room_id, 0.7)
     else:
-        # Optional: feedback per player
-        emit("wrong", {"got": text})
-
-
-def _delayed_next_round(room_id: str, delay: float):
-    socketio.sleep(delay)
-    if room_id in rooms:
-        start_new_round(room_id)
+        emit("wrong", {})
 
 
 @socketio.on("disconnect")
 def handle_disconnect():
-    # Remove player from any rooms
     sid = request.sid
-    empty_rooms = []
+    empty = []
+
     for room_id, r in rooms.items():
         if sid in r["players"]:
             r["players"].pop(sid, None)
             r["scores"].pop(sid, None)
-            try:
-                socket_socket_leave = socket_leave_room
-            except NameError:
-                socket_socket_leave = socket_socket_room  # not used
-            # broadcast updated scoreboard
-            broadcast_scoreboard(room_id)
 
-            # If room empty => mark for deletion
+            # si l'host part, on passe l'host au premier joueur restant
+            if r["host_sid"] == sid:
+                r["host_sid"] = next(iter(r["players"].keys()), None)
+
+            socketio.emit("lobby_state", lobby_payload(room_id), room=room_id)
+            emit_scoreboard(room_id)
+
             if len(r["players"]) == 0:
-                empty_rooms.append(room_id)
+                empty.append(room_id)
 
-    for room_id in empty_rooms:
+    for room_id in empty:
         rooms.pop(room_id, None)
 
 
