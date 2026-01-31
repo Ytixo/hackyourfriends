@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Hack Your Friends</title>
+    <style>
+        body {
+            background: black;
+            color: #00ff00;
+            font-family: monospace;
+        }
+        #word {
+            color: #ff4444;
+            font-weight: bold;
+        }
+        input {
+            background: black;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+        }
+    </style>
+</head>
+<body>
+
+<h3 id="line"></h3>
+<p>Mot secret : <span id="word">???</span></p>
+<input id="input" autofocus />
+
+<h4>Scores</h4>
+<ul id="scores"></ul>
+
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+    const socket = io();
+    const username = prompt("Pseudo ?");
+    const input = document.getElementById("input");
+    const wordSpan = document.getElementById("word");
+    const line = document.getElementById("line");
+    const scoresList = document.getElementById("scores");
+
+    socket.emit("join", { username });
+
+    socket.on("public_line", data => {
+        line.innerText = data.line;
+        input.value = "";
+    });
+
+    socket.on("private_word", data => {
+        wordSpan.innerText = data.word;
+    });
+
+    input.addEventListener("keydown", e => {
+        if (e.key === "Enter") {
+            socket.emit("player_input", {
+                input: input.value
+            });
+            input.value = "";
+        }
+    });
+
+    socket.on("winner", data => {
+        alert(data.player + " a gagné le round !");
+        socket.emit("new_round");
+    });
+
+    socket.on("scoreboard", data => {
+        scoresList.innerHTML = "";
+        Object.values(data).forEach(p => {
+            const li = document.createElement("li");
+            li.innerText = `${p.name} : ${p.score}`;
+            scoresList.appendChild(li);
+        });
+    });
+
+    socket.emit("new_round");
+</script>
+
+</body>
+</html>
