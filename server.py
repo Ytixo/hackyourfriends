@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
+from flask_socketio import join_room as socket_join_room
 import random
 import threading
 
@@ -27,11 +28,15 @@ round_active = False
 def index():
     return render_template("index.html")
 
-@socketio.on("join")
-def join(data):
+@socketio.on("join_room")
+def handle_join_room(data):
+    room = data["room"]
     username = data["username"]
-    scores[request.sid] = {"name": username, "score": 0}
-    emit("scoreboard", scores, broadcast=True)
+
+    socket_join_room(room)
+
+    rooms[room]["players"][request.sid] = username
+    rooms[room]["score"][request.sid] = 0
 
 rooms = {
     "X9A4F": {
