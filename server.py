@@ -1,8 +1,6 @@
 from flask import Flask, render_template, request
-from flask_socketio import SocketIO, emit
-from flask_socketio import join_room as socket_join_room
-import random
-import threading
+from flask_socketio import SocketIO, emit, join_room as socket_join_room
+import random, threading, os
 
 app = Flask(__name__)
 socketio = SocketIO(app)
@@ -38,24 +36,31 @@ def handle_join_room(data):
     rooms[room]["players"][request.sid] = username
     rooms[room]["score"][request.sid] = 0
 
-rooms = {
-    "X9A4F": {
-        "players": {},
-        "score": {},
-        "current_word": "",
-        "round_active": False,
-        "time_limit": 5
-    }
-}
+rooms = {}
+
+@app.route("/room/<room_id>")
+def room(room_id):
+    if room_id not in rooms:
+        rooms[room_id] = {
+            "players": {},
+            "scores": {},
+            "current_word": "",
+            "round_active": False,
+            "time_limit": 5
+        }
+    return render_template("index.html", room_id=room_id)
 
 @socketio.on("join_room")
-def join_room(data):
+def handle_join(data):
     room = data["room"]
     username = data["username"]
-    join_room(room)
+
+    socket_join_room(room)
 
     rooms[room]["players"][request.sid] = username
-    rooms[room]["score"][request.sid] = 0
+    rooms[room]["scores"][request.sid] = 0
+
+    emit("scoreboard", rooms[room]["scores"], room=room)
 
 
 def end_round(room):
@@ -64,43 +69,47 @@ def end_round(room):
 
 def start_round(room):
     rooms[room]["round_active"] = True
-    threading.Timer(
-        rooms[room]["time_limit"],
-        end_round,
-        args=[room]
-    ).start()
+
+    timer = rooms[room]["time_limit"]
+    socketio.emit("timer_start", {"time": timer}, room=room)
+
+    threading.Timer(timer, end_round, args=[room]).start()
 
 @socketio.on("new_round")
-def new_round():
-    global current_word, round_active
-    if round_active:
+def new_round(data):
+    room = data["room"]
+
+    if rooms[room]["round_active"]:
         return
 
-    current_word = random.choice(mots_cles)
+    word = random.choice(mots_cles)
     line = random.choice(lignes_code)
-    round_active = True
 
-    # visible par tous
-    emit("public_line", {"line": line}, broadcast=True)
+    rooms[room]["current_word"] = word
+    start_round(room)
 
-    # mot envoyé en privé
-    emit("private_word", {"word": current_word})
+    emit("public_line", {"line": line}, room=room)
+    emit("private_word", {"word": word})
+
 
 @socketio.on("player_input")
 def check_input(data):
-    global round_active
-    if not round_active:
+    room = data["room"]
+    user_input = data["input"]
+
+    if not rooms[room]["round_active"]:
         return
 
-    if data["input"] == current_word:
-        round_active = False
-        scores[request.sid]["score"] += 1
+    if user_input == rooms[room]["current_word"]:
+        rooms[room]["round_active"] = False
+        rooms[room]["scores"][request.sid] += 1
 
         emit("winner", {
-            "player": scores[request.sid]["name"]
-        }, broadcast=True)
+            "player": rooms[room]["players"][request.sid]
+        }, room=room)
 
-        emit("scoreboard", scores, broadcast=True)
+        emit("scoreboard", rooms[room]["scores"], room=room)
+
 
 if __name__ == "__main__":
     import os

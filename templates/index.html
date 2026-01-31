@@ -21,6 +21,7 @@
 </head>
 <body>
 
+<p>⏱️ Temps : <span id="timer">0</span></p>
 <h3 id="line"></h3>
 <p>Mot secret : <span id="word">???</span></p>
 <input id="input" autofocus />
@@ -31,48 +32,40 @@
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
     const socket = io();
+    const room = "{{ room_id }}";
     const username = prompt("Pseudo ?");
-    const input = document.getElementById("input");
-    const wordSpan = document.getElementById("word");
-    const line = document.getElementById("line");
-    const scoresList = document.getElementById("scores");
 
-    socket.emit("join", { username });
+    socket.emit("join_room", { room, username });
+    socket.emit("new_round", { room });
 
-    socket.on("public_line", data => {
-        line.innerText = data.line;
-        input.value = "";
+    socket.on("timer_start", data => {
+        let time = data.time;
+        const timerEl = document.getElementById("timer");
+
+        timerEl.innerText = time;
+        const interval = setInterval(() => {
+            time--;
+            timerEl.innerText = time;
+            if (time <= 0) clearInterval(interval);
+        }, 1000);
     });
 
-    socket.on("private_word", data => {
-        wordSpan.innerText = data.word;
+    socket.on("round_timeout", () => {
+        alert("⏱️ Temps écoulé !");
+        socket.emit("new_round", { room });
     });
 
-    input.addEventListener("keydown", e => {
+    document.getElementById("input").addEventListener("keydown", e => {
         if (e.key === "Enter") {
             socket.emit("player_input", {
-                input: input.value
+                room,
+                input: e.target.value
             });
-            input.value = "";
+            e.target.value = "";
         }
     });
-
-    socket.on("winner", data => {
-        alert(data.player + " a gagné le round !");
-        socket.emit("new_round");
-    });
-
-    socket.on("scoreboard", data => {
-        scoresList.innerHTML = "";
-        Object.values(data).forEach(p => {
-            const li = document.createElement("li");
-            li.innerText = `${p.name} : ${p.score}`;
-            scoresList.appendChild(li);
-        });
-    });
-
-    socket.emit("new_round");
 </script>
+
 
 </body>
 </html>
