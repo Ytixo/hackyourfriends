@@ -23,6 +23,21 @@
     .row { align-items:flex-start; }
     .panel { overflow:hidden; }
 
+    #cursor { display:inline-block; margin-left:2px; animation: blink 0.9s infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .log{
+    margin:10px 0 0;
+    padding:10px;
+    border:1px solid #0a3;
+    border-radius:10px;
+    background:#010;
+    min-height:90px;
+    white-space:pre-wrap;
+    overflow:auto;
+    font-size:.92rem;
+    }
+
   </style>
 </head>
 <body>
@@ -36,13 +51,14 @@
     <div class="row">
       <div class="panel">
         <div class="small">Terminal</div>
-        <h3 id="line">Connexion...</h3>
+        <h3 id="line"><span id="typed"></span><span id="cursor">█</span></h3>
         <div class="small">Mot à taper : <span id="word">---</span></div>
         <input id="input" autocomplete="off" placeholder="Écris puis Entrée" autofocus />
         <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
             <button class="btn" id="startBtn" style="display:none;">▶ Lancer la partie</button>
             <button class="btn" id="copyBtn">Copier lien 📋</button>
         </div>
+        <pre id="log" class="log"></pre>
         <div class="small" id="roundInfo" style="margin-top:10px;"></div>
         <div class="small" id="status" style="margin-top:6px;"></div>
       </div>
