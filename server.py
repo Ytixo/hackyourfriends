@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
 import random
+import threading
 
 app = Flask(__name__)
 socketio = SocketIO(app)
@@ -31,6 +32,38 @@ def join(data):
     username = data["username"]
     scores[request.sid] = {"name": username, "score": 0}
     emit("scoreboard", scores, broadcast=True)
+
+rooms = {
+    "X9A4F": {
+        "players": {},
+        "score": {},
+        "current_word": "",
+        "round_active": False,
+        "time_limit": 5
+    }
+}
+
+@socketio.on("join_room")
+def join_room(data):
+    room = data["room"]
+    username = data["username"]
+    join_room(room)
+
+    rooms[room]["players"][request.sid] = username
+    rooms[room]["score"][request.sid] = 0
+
+
+def end_round(room):
+    rooms[room]["round_active"] = False
+    socketio.emit("round_timeout", room=room)
+
+def start_round(room):
+    rooms[room]["round_active"] = True
+    threading.Timer(
+        rooms[room]["time_limit"],
+        end_round,
+        args=[room]
+    ).start()
 
 @socketio.on("new_round")
 def new_round():
