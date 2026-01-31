@@ -3,6 +3,8 @@
   const room = (window.GAME_ROOM || "").trim().toUpperCase();
   const username = (prompt("Pseudo ?") || "Player").trim() || "Player";
 
+  const appWrap = document.getElementById("appWrap");
+
   const typedEl = document.getElementById("typed");
   const wordEl = document.getElementById("word");
   const inputEl = document.getElementById("input");
@@ -11,9 +13,8 @@
 
   const scoresEl = document.getElementById("scores");
   const hpListEl = document.getElementById("hpList");
-
-  const statusEl = document.getElementById("status");
   const roundInfoEl = document.getElementById("roundInfo");
+  const statusEl = document.getElementById("status");
   const logEl = document.getElementById("log");
 
   const roomLinkEl = document.getElementById("roomLink");
@@ -22,16 +23,25 @@
 
   const timeLimitInput = document.getElementById("timeLimitInput");
   const setTimeBtn = document.getElementById("setTimeBtn");
-
   const modeSelect = document.getElementById("modeSelect");
   const setModeBtn = document.getElementById("setModeBtn");
+
+  const timerBar = document.getElementById("timerBar");
+  const timerFill = document.getElementById("timerFill");
+
+  const overlay = document.getElementById("overlay");
+  const overlayTitle = document.getElementById("overlayTitle");
+  const overlaySub = document.getElementById("overlaySub");
+  const overlayClose = document.getElementById("overlayClose");
+
+  const soundBtn = document.getElementById("soundBtn");
 
   let gameStarted = false;
   let isHost = false;
   let currentMode = "easy";
-  let matchStartTs = 0;
+  let matchStartTs = 0; // unix seconds (server)
 
-  // --- link
+  // ---------- small helpers ----------
   const link = `${window.location.origin}/room/${room}`;
   roomLinkEl.textContent = link;
 
@@ -41,21 +51,48 @@
   });
 
   function flashStatus(msg, ms = 1200) {
+    if (!statusEl) return;
     statusEl.textContent = msg;
-    if (ms > 0) setTimeout(() => { if (statusEl.textContent === msg) statusEl.textContent = ""; }, ms);
+    if (ms > 0) setTimeout(() => {
+      if (statusEl.textContent === msg) statusEl.textContent = "";
+    }, ms);
   }
+
   function logPush(text) {
     if (!logEl) return;
     const now = new Date().toLocaleTimeString();
     logEl.textContent = `[${now}] ${text}\n` + logEl.textContent;
   }
+
   function setLobbyMode(on) {
     inputEl.disabled = on;
     inputEl.placeholder = on ? "En attente du lancement..." : "Écris puis Entrée";
     inputEl.value = "";
   }
 
-  // --- typewriter
+  function shake() {
+    if (!appWrap) return;
+    appWrap.classList.remove("shake");
+    // force reflow
+    void appWrap.offsetWidth;
+    appWrap.classList.add("shake");
+  }
+
+  // ---------- overlay ----------
+  function showOverlay(title, sub, ms = 1200) {
+    if (!overlay) return;
+    overlayTitle.textContent = title;
+    overlayTitle.setAttribute("data-text", title);
+    overlaySub.textContent = sub || "";
+    overlay.classList.add("show");
+
+    if (ms > 0) {
+      setTimeout(() => overlay.classList.remove("show"), ms);
+    }
+  }
+  overlayClose?.addEventListener("click", () => overlay?.classList.remove("show"));
+
+  // ---------- typewriter ----------
   let typeTimer = null;
   function typewrite(text, cps = 85) {
     clearInterval(typeTimer);
@@ -69,28 +106,60 @@
     }, interval);
   }
 
-  // --- round timer
+  // ---------- timer (number + bar) ----------
   let roundInterval = null;
-  function startRoundTimer(seconds) {
-    clearInterval(roundInterval);
-    let t = Number(seconds) || 0;
-    timerEl.textContent = String(t);
-    roundInterval = setInterval(() => {
-      t -= 1;
-      if (t < 0) { clearInterval(roundInterval); return; }
-      timerEl.textContent = String(t);
-    }, 1000);
+  let roundEndsAt = 0;      // ms
+  let roundDuration = 0;    // ms
+
+  function setTimerDanger(on) {
+    if (!timerBar) return;
+    timerBar.classList.toggle("timerDanger", !!on);
   }
 
-  // --- match timer (global)
+  function startRoundTimer(seconds) {
+    clearInterval(roundInterval);
+
+    const s = Number(seconds) || 0;
+    timerEl.textContent = String(s);
+
+    roundDuration = s * 1000;
+    roundEndsAt = Date.now() + roundDuration;
+
+    setTimerDanger(false);
+    setBar(1);
+
+    roundInterval = setInterval(() => {
+      const leftMs = Math.max(0, roundEndsAt - Date.now());
+      const leftS = Math.ceil(leftMs / 1000);
+      timerEl.textContent = String(leftS);
+
+      const ratio = roundDuration ? (leftMs / roundDuration) : 0;
+      setBar(ratio);
+
+      if (ratio <= 0.22) setTimerDanger(true);
+      if (leftMs <= 0) {
+        clearInterval(roundInterval);
+        setBar(0);
+      }
+    }, 80);
+  }
+
+  function setBar(ratio) {
+    if (!timerFill) return;
+    const r = Math.max(0, Math.min(1, ratio));
+    timerFill.style.transform = `scaleX(${r})`;
+  }
+
+  // ---------- match timer (use server ts) ----------
   let matchInterval = null;
-  function startMatchTimer(startTs) {
-    matchStartTs = startTs || 0;
+  function startMatchTimer(serverStartTs) {
+    matchStartTs = Number(serverStartTs) || 0;
     clearInterval(matchInterval);
+
     const tick = () => {
       if (!matchStartTs) return;
       const s = (Date.now()/1000 - matchStartTs).toFixed(1);
-      if (matchTimerEl) matchTimerEl.textContent = s;
+      matchTimerEl.textContent = s;
     };
     tick();
     matchInterval = setInterval(tick, 100);
@@ -99,7 +168,7 @@
     clearInterval(matchInterval);
   }
 
-  // --- scoreboard + hp
+  // ---------- scoreboard + hp ----------
   function renderScores(players) {
     scoresEl.innerHTML = "";
     players.forEach(p => {
@@ -118,14 +187,14 @@
 
       const name = document.createElement("div");
       name.className = "hpName";
-      name.textContent = `${p.name} — ${p.hp} HP`;
+      name.innerHTML = `<span>${escapeHtml(p.name)}</span><span>${p.hp} HP</span>`;
 
       const bar = document.createElement("div");
       bar.className = "hpBar";
 
       const fill = document.createElement("div");
       fill.className = "hpFill";
-      const pct = Math.max(0, Math.min(100, p.hp));
+      const pct = Math.max(0, Math.min(100, Number(p.hp) || 0));
       fill.style.width = pct + "%";
 
       bar.appendChild(fill);
@@ -135,14 +204,21 @@
     });
   }
 
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, m => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[m]));
+  }
+
+  // ---------- cyber log burst ----------
   function hackBurst(winner, ms) {
     logPush(`⚡ ${winner} > BYPASS FIREWALL (${ms}ms)`);
     logPush(`🔓 ACCESS GRANTED`);
     logPush(`⬇️  EXFILTRATING DATA...`);
-    setTimeout(() => logPush(`✅ DONE`), 400);
+    setTimeout(() => logPush(`✅ DONE`), 380);
   }
 
-  // --- hard mode: mask input & hide word after reveal
+  // ---------- mode (hard masking & hide word) ----------
   let hideWordTimer = null;
   function applyMode(mode, revealMs) {
     currentMode = mode || "easy";
@@ -151,11 +227,9 @@
     clearTimeout(hideWordTimer);
 
     if (currentMode === "hard") {
-      inputEl.type = "password"; // masque ce qu’on écrit
+      inputEl.type = "password";
       if (revealMs && revealMs > 0) {
-        hideWordTimer = setTimeout(() => {
-          wordEl.textContent = "••••";
-        }, revealMs);
+        hideWordTimer = setTimeout(() => { wordEl.textContent = "••••"; }, revealMs);
       } else {
         wordEl.textContent = "••••";
       }
@@ -164,7 +238,53 @@
     }
   }
 
-  // --- join
+  // ---------- SFX (WebAudio, no files) ----------
+  let soundOn = true;
+  let audioCtx = null;
+
+  function ensureAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume().catch(()=>{});
+    return audioCtx;
+  }
+
+  function beep(type = "ok") {
+    if (!soundOn) return;
+    const ctx = ensureAudio();
+
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+
+    const now = ctx.currentTime;
+    let f1 = 880, f2 = 1320, dur = 0.08;
+
+    if (type === "wrong") { f1 = 140; f2 = 90; dur = 0.12; }
+    if (type === "win")   { f1 = 740; f2 = 1480; dur = 0.14; }
+    if (type === "timeout"){ f1 = 220; f2 = 180; dur = 0.18; }
+
+    o.type = (type === "wrong") ? "sawtooth" : "triangle";
+    o.frequency.setValueAtTime(f1, now);
+    o.frequency.exponentialRampToValueAtTime(Math.max(40, f2), now + dur);
+
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.18, now + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+
+    o.start(now);
+    o.stop(now + dur + 0.02);
+  }
+
+  soundBtn?.addEventListener("click", () => {
+    soundOn = !soundOn;
+    soundBtn.textContent = soundOn ? "ON" : "OFF";
+    if (soundOn) beep("ok");
+  });
+
+  // unlock audio on first interaction
+  window.addEventListener("pointerdown", () => { if (soundOn) ensureAudio(); }, { once: true });
+
+  // ---------- join ----------
   if (!room) { window.location.href = "/"; return; }
   socket.emit("join_room", { room, username });
 
@@ -178,16 +298,10 @@
       startBtn.onclick = () => socket.emit("start_game", { room });
     }
 
-    if (setTimeBtn) {
-      setTimeBtn.disabled = !isHost;
-      setTimeBtn.title = isHost ? "" : "Seul l'hôte peut changer";
-    }
+    if (setTimeBtn) setTimeBtn.disabled = !isHost;
     if (timeLimitInput && data?.time_limit) timeLimitInput.value = data.time_limit;
 
-    if (setModeBtn) {
-      setModeBtn.disabled = !isHost;
-      setModeBtn.title = isHost ? "" : "Seul l'hôte peut changer";
-    }
+    if (setModeBtn) setModeBtn.disabled = !isHost;
     if (modeSelect) modeSelect.value = currentMode;
 
     setLobbyMode(!gameStarted);
@@ -197,7 +311,7 @@
     inputEl.focus();
   });
 
-  // --- set time limit
+  // set time limit
   setTimeBtn?.addEventListener("click", () => {
     const val = Number(timeLimitInput?.value);
     if (!Number.isFinite(val)) return;
@@ -206,11 +320,12 @@
   socket.on("time_limit_updated", (data) => {
     const s = data?.seconds;
     if (s && timeLimitInput) timeLimitInput.value = s;
-    flashStatus(`⏱️ Temps par round: ${s}s`, 1200);
-    logPush(`Temps par round réglé à ${s}s`);
+    flashStatus(`⏱️ Temps: ${s}s`, 1200);
+    logPush(`Temps par round: ${s}s`);
+    beep("ok");
   });
 
-  // --- mode select
+  // mode select
   setModeBtn?.addEventListener("click", () => {
     const mode = (modeSelect?.value || "easy").toLowerCase();
     socket.emit("set_mode", { room, mode });
@@ -218,8 +333,9 @@
   socket.on("mode_updated", (data) => {
     currentMode = data?.mode || "easy";
     flashStatus(`Mode: ${currentMode.toUpperCase()}`, 1200);
-    logPush(`Mode réglé: ${currentMode}`);
+    logPush(`Mode: ${currentMode}`);
     applyMode(currentMode, 0);
+    beep("ok");
   });
 
   // lobby
@@ -228,7 +344,9 @@
       gameStarted = false;
       setLobbyMode(true);
       stopMatchTimer();
-      if (matchTimerEl) matchTimerEl.textContent = "0.0";
+      matchTimerEl.textContent = "0.0";
+      setBar(1);
+      setTimerDanger(false);
 
       currentMode = data?.mode || currentMode;
       if (modeSelect) modeSelect.value = currentMode;
@@ -240,14 +358,11 @@
       if (typedEl) typedEl.textContent = "";
       timerEl.textContent = "0";
 
-      const hostName = data.host_name || "";
-      if (hostName && hostName === username) isHost = true;
-
       if (startBtn) startBtn.style.display = (isHost && !gameStarted) ? "inline-block" : "none";
       if (setTimeBtn) setTimeBtn.disabled = !isHost;
       if (setModeBtn) setModeBtn.disabled = !isHost;
 
-      applyMode("easy", 0); // en lobby on remet visible
+      applyMode("easy", 0);
     }
   });
 
@@ -258,12 +373,11 @@
     currentMode = data?.mode || currentMode;
     applyMode(currentMode, 0);
 
-    // match timer démarre ici (client)
-    startMatchTimer(Date.now()/1000);
-
+    // NOTE: on attend surtout round_start pour avoir match_start_ts serveur
     flashStatus("▶ Partie lancée !", 1200);
     logPush(`Partie lancée (${data?.round_total || 30} mots) en ${currentMode.toUpperCase()}`);
     if (startBtn) startBtn.style.display = "none";
+    beep("win");
   });
 
   // round start
@@ -278,8 +392,9 @@
     const seconds = data?.seconds ?? 0;
     const mode = data?.mode ?? "easy";
     const revealMs = data?.word_reveal_ms ?? 0;
+    const msTs = data?.match_start_ts ?? 0;
 
-    typewrite(line, 90);
+    typewrite(line, 92);
 
     wordEl.textContent = word;
     applyMode(mode, revealMs);
@@ -287,22 +402,34 @@
     roundInfoEl.textContent = `Mot ${idx}/${total} ⚡`;
     inputEl.value = "";
     inputEl.focus();
+
     startRoundTimer(seconds);
 
+    // ✅ match timer correct (depuis serveur)
+    if (msTs) startMatchTimer(msTs);
+
     logPush(`Nouveau mot: "${word}"`);
+    beep("ok");
   });
 
   socket.on("round_timeout", () => {
     flashStatus("⏱️ Trop tard !", 900);
     logPush("⏱️ Timeout");
+    showOverlay("TIMEOUT", "Vous êtes trop lent…", 900);
+    beep("timeout");
+    shake();
   });
 
   socket.on("round_winner", (data) => {
     const winner = data?.player || "Quelqu’un";
     const ms = data?.ms ?? 0;
     const dmg = data?.damage ?? 0;
-    flashStatus(`🏆 ${winner} hack (${ms}ms) -${dmg}HP`, 1700);
+
+    flashStatus(`🏆 ${winner} (${ms}ms) -${dmg}HP`, 1700);
     hackBurst(winner, ms);
+    showOverlay("ACCESS GRANTED", `${winner} a hack en ${ms}ms • -${dmg}HP`, 1100);
+    beep("win");
+    shake();
   });
 
   socket.on("wrong", (data) => {
@@ -310,6 +437,8 @@
     const hp = data?.hp;
     flashStatus(`❌ Erreur ! -${dmg}HP`, 700);
     if (typeof hp === "number") logPush(`Erreur: -${dmg}HP (reste ${hp}HP)`);
+    beep("wrong");
+    shake();
   });
 
   socket.on("state", (data) => {
@@ -326,18 +455,19 @@
     const totalMs = data?.total_ms ?? 0;
     const totalS = (totalMs / 1000).toFixed(2);
 
-    flashStatus(`✅ Partie terminée en ${totalS}s`, 2500);
+    flashStatus(`✅ Terminé en ${totalS}s`, 2500);
     logPush(`🏁 Fin de partie (${totalS}s)`);
 
     const top = (data?.players ?? [])[0];
     if (top) {
-      alert(`🏁 Fin de partie !\nTemps: ${totalS}s\nGagnant: ${top.name} (${top.score} pts, ${top.hp}HP)`);
+      showOverlay("SESSION CLOSED", `Gagnant: ${top.name} • ${top.score} pts • ${top.hp} HP • ${totalS}s`, 2200);
     } else {
-      alert(`🏁 Fin de partie !\nTemps: ${totalS}s`);
+      showOverlay("SESSION CLOSED", `Temps: ${totalS}s`, 1800);
     }
 
     if (startBtn) startBtn.style.display = isHost ? "inline-block" : "none";
     applyMode("easy", 0);
+    beep("timeout");
   });
 
   // input
