@@ -136,10 +136,11 @@
   }
 
   function hackBurst(winner, ms) {
+    const word = data?.word ?? "";
     logPush(`⚡ ${winner} > BYPASS FIREWALL (${ms}ms)`);
     logPush(`🔓 ACCESS GRANTED`);
     logPush(`⬇️  EXFILTRATING DATA...`);
-    setTimeout(() => logPush(`✅ DONE`), 400);
+    setTimeout(() => logPush(`✅ DONE "${word}"`), 400);
   }
 
   // --- hard mode: mask input & hide word after reveal
@@ -289,7 +290,6 @@
     inputEl.focus();
     startRoundTimer(seconds);
 
-    logPush(`Nouveau mot: "${word}"`);
   });
 
   socket.on("round_timeout", () => {
