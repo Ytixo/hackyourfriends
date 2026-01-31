@@ -38,19 +38,31 @@
     font-size:.92rem;
     }
 
+    select{
+        background:#000; color:#00ff66; border:1px solid #00ff66;
+        padding:10px 12px; border-radius:10px;
+    }
+    .hpRow{ margin-top:10px; }
+    .hpBar{ height:10px; border:1px solid #00ff66; border-radius:999px; overflow:hidden; }
+    .hpFill{ height:10px; width:100%; background:#00ff66; }
+    .hpName{ font-size:.9rem; opacity:.9; margin:4px 0; }
+
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="top">
       <div class="pill">Salon 🔐: <strong id="roomCode">{{ room_id }}</strong></div>
-      <div class="pill">⏱️ Temps: <strong id="timer">0</strong>s</div>
+      <div class="pill">⏱️ Round: <strong id="timer">0</strong>s</div>
+      <div class="pill">⏳ Match: <strong id="matchTimer">0.0</strong>s</div>
       <div class="pill small">Lien: <span id="roomLink"></span></div>
     </div>
 
     <div class="row">
       <div class="panel">
         <div class="small">Terminal</div>
+        <div class="small" style="margin-top:10px;">Vie (HP) ❤️</div>
+        <div id="hpList"></div>
         <h3 id="line"><span id="typed"></span><span id="cursor">█</span></h3>
         <div class="small">Mot à taper : <span id="word">---</span></div>
         <input id="input" autocomplete="off" placeholder="Écris puis Entrée" autofocus />
@@ -71,8 +83,15 @@
 
         <div class="small">Paramètres (optionnel)</div>
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:8px;">
-          <input id="timeLimitInput" type="number" min="3" max="30" style="max-width:140px" />
-          <button class="btn" id="setTimeBtn">Définir temps</button>
+            <select id="modeSelect">
+                <option value="easy">Easy (mot visible)</option>
+                <option value="hard">Hard (mot 0.5s + caché)</option>
+            </select>
+            <button class="btn" id="setModeBtn">Mode</button>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:8px;">
+            <input id="timeLimitInput" type="number" min="3" max="30" value="7" style="max-width:140px" />
+            <button class="btn" id="setTimeBtn">Définir temps</button>
         </div>
         <div class="small" style="margin-top:8px;">(3 à 30 secondes)</div>
       </div>
