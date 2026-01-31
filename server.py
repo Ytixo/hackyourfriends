@@ -3,7 +3,7 @@ import random
 import string
 import time
 
-from flask import Flask, render_template, redirect, request
+from flask import Flask, render_template, redirect, request, jsonify
 from flask_socketio import SocketIO, emit, join_room as socket_join_room
 
 app = Flask(__name__)
@@ -14,7 +14,7 @@ mots_cles = [
     "for", "while", "if", "else", "print", "input",
     "list", "dict", "len", "range", "import", "def",
     "try", "except", "return", "class", "lambda", "with",
-    "break", "continue", "yield", "global", "assert"
+    "break", "continue", "yield", "global", "assert", "test"
 ]
 
 lignes_code = [
@@ -33,6 +33,7 @@ lignes_code = [
 rooms = {}
 
 DEFAULT_TIME_LIMIT = 7         # temps max par mot/round
+DEFAULT_TIME_LIMIT_HARD = 3
 ROUNDS_TOTAL = 30
 
 MAX_HP = 100
@@ -55,7 +56,8 @@ def ensure_room(room_id: str):
             "host_sid": None,
 
             "started": False,
-            "time_limit": DEFAULT_TIME_LIMIT,
+            "time_limit_easy": DEFAULT_TIME_LIMIT,
+            "time_limit_hard": DEFAULT_TIME_LIMIT_HARD,
             "round_total": ROUNDS_TOTAL,
 
             "mode": "easy",     # easy | hard
@@ -70,6 +72,8 @@ def ensure_room(room_id: str):
             "recent_words": [],  # anti-repeat
         }
 
+def get_time_limit(r):
+    return r["time_limit_easy"] if r["mode"] == "easy" else r["time_limit_hard"]
 
 def public_state(room_id: str):
     r = rooms[room_id]
@@ -93,7 +97,7 @@ def lobby_payload(room_id: str):
         "players": [{"name": r["players"][sid]} for sid in r["players"]],
         "host_name": r["players"].get(r["host_sid"], "Host"),
         "mode": r["mode"],
-        "time_limit": r["time_limit"],
+        "time_limit": get_time_limit(r),
     }
 
 
@@ -139,18 +143,21 @@ def start_new_round(room_id: str):
     r["round_token"] = generate_room_code(10)
     r["round_start_ts"] = time.time()
 
+    seconds = get_time_limit(r)
+
     socketio.emit("round_start", {
         "line": r["current_line"],
         "word": r["current_word"],
         "round_index": r["round_index"],
         "round_total": r["round_total"],
-        "seconds": r["time_limit"],
+        "seconds": seconds,
         "mode": r["mode"],
         "word_reveal_ms": 500 if r["mode"] == "hard" else 999999,
         "match_start_ts": r["match_start_ts"],
     }, room=room_id)
 
-    socketio.start_background_task(round_timer_task, room_id, r["round_token"], r["time_limit"])
+    socketio.start_background_task(round_timer_task, room_id, r["round_token"], seconds)
+
 
 
 def round_timer_task(room_id: str, token: str, seconds: int):
@@ -189,13 +196,6 @@ def end_game(room_id: str):
 def home():
     return render_template("home.html")
 
-
-@app.route("/create")
-def create():
-    room_id = generate_room_code()
-    return redirect(f"/room/{room_id}")
-
-
 @app.route("/room/<room_id>")
 def room(room_id):
     ensure_room(room_id)
@@ -225,11 +225,12 @@ def handle_join(data):
         "room": room_id,
         "is_host": request.sid == r["host_sid"],
         "started": r["started"],
-        "time_limit": r["time_limit"],
+        "time_limit": get_time_limit(r),
         "round_total": r["round_total"],
         "mode": r["mode"],
         "max_hp": MAX_HP,
     })
+
 
     socketio.emit("lobby_state", lobby_payload(room_id), room=room_id)
     emit_state(room_id)
@@ -251,8 +252,16 @@ def handle_set_time_limit(data):
         return
 
     seconds = max(3, min(30, seconds))
-    r["time_limit"] = seconds
-    socketio.emit("time_limit_updated", {"seconds": seconds}, room=room_id)
+
+    # change le time limit du mode actuel
+    if r["mode"] == "easy":
+        r["time_limit_easy"] = seconds
+    else:
+        r["time_limit_hard"] = seconds
+
+    socketio.emit("time_limit_updated", {"seconds": seconds, "mode": r["mode"]}, room=room_id)
+    socketio.emit("lobby_state", lobby_payload(room_id), room=room_id)
+
 
 
 @socketio.on("set_mode")
@@ -372,6 +381,30 @@ def handle_disconnect():
 
     for room_id in empty:
         rooms.pop(room_id, None)
+
+
+@app.get("/api/rooms")
+def api_rooms():
+    # Exemple: renvoie uniquement les rooms qui ont au moins 1 joueur
+    active = []
+    for room_id, r in rooms.items():
+        if len(r["players"]) > 0:
+            active.append({
+                "room": room_id,
+                "players": len(r["players"]),
+                "started": r["started"],
+                "mode": r["mode"],
+            })
+
+    # tri : rooms non démarrées d'abord, puis plus de joueurs
+    active.sort(key=lambda x: (x["started"], -x["players"], x["room"]))
+    return jsonify(active)
+
+@app.route("/create")
+def create():
+    room_id = generate_room_code()
+    ensure_room(room_id)
+    return redirect(f"/room/{room_id}")
 
 
 if __name__ == "__main__":
