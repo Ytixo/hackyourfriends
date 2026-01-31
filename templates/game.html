@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hack Your Friends - Game</title>
+  <style>
+    body { margin:0; background:#000; color:#00ff66; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 18px; }
+    .top { display:flex; gap:14px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+    .pill { border:1px solid #00ff66; padding:8px 10px; border-radius:999px; }
+    .row { display:flex; gap:16px; margin-top:14px; flex-wrap:wrap; }
+    .panel { flex:1; min-width: 280px; border:1px solid #0a3; border-radius:12px; padding:14px; background:#020; }
+    #line { white-space:pre-wrap; font-size: 1.05rem; }
+    #word { color:#ff4d4d; font-weight:700; }
+    input { width:100%; font-size:1.1rem; padding:12px; border-radius:10px; border:1px solid #00ff66; background:#000; color:#00ff66; outline:none; }
+    ul { margin:8px 0 0; padding-left:18px; }
+    .small { opacity:.85; font-size:.95rem; }
+    .btn { background:#000; color:#00ff66; border:1px solid #00ff66; padding:10px 12px; border-radius:10px; cursor:pointer; }
+    .btn:hover { opacity:.9; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="pill">Salon 🔐: <strong id="roomCode">{{ room_id }}</strong></div>
+      <div class="pill">⏱️ Temps: <strong id="timer">0</strong>s</div>
+      <div class="pill small">Lien: <span id="roomLink"></span></div>
+    </div>
+
+    <div class="row">
+      <div class="panel">
+        <div class="small">Terminal</div>
+        <h3 id="line">Connexion...</h3>
+        <div class="small">Mot secret : <span id="word">---</span></div>
+        <div style="margin-top:10px">
+          <input id="input" autocomplete="off" placeholder="Tape le mot puis Entrée" autofocus />
+        </div>
+        <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="btn" id="copyBtn">Copier lien 📋</button>
+        </div>
+        <div class="small" id="status" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="panel">
+        <div class="small">Scores 🏆</div>
+        <ul id="scores"></ul>
+
+        <hr style="border:0;border-top:1px solid #0a3; margin:14px 0;">
+
+        <div class="small">Paramètres (optionnel)</div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:8px;">
+          <input id="timeLimitInput" type="number" min="3" max="30" style="max-width:140px" />
+          <button class="btn" id="setTimeBtn">Définir temps</button>
+        </div>
+        <div class="small" style="margin-top:8px;">(3 à 30 secondes)</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.GAME_ROOM = "{{ room_id }}";
+  </script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="/static/js/game.js"></script>
+</body>
+</html>

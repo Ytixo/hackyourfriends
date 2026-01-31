@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hack Your Friends</title>
+  <style>
+    body { background:#0b0b0b; color:#eaeaea; font-family:system-ui, Arial; text-align:center; padding:40px; }
+    .card { max-width:520px; margin:0 auto; border:1px solid #222; border-radius:12px; padding:24px; background:#0f0f0f; }
+    h1 { margin:0 0 8px; }
+    p { opacity:.85; }
+    input, button { font-size:1rem; padding:12px 14px; border-radius:10px; border:1px solid #333; }
+    input { width: 220px; background:#0b0b0b; color:#eaeaea; }
+    button { background:#111; color:#eaeaea; cursor:pointer; }
+    button:hover { border-color:#555; }
+    .row { margin-top:16px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+    .hint { font-size:.95rem; opacity:.7; margin-top:14px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Hack Your Friends 💻⚡</h1>
+    <p>Crée un salon privé ou rejoins tes potes avec un code 🔐</p>
+
+    <div class="row">
+      <button id="createBtn">Créer un salon</button>
+    </div>
+
+    <div class="row">
+      <input id="roomInput" placeholder="Code salon (ex: X9A4F)" maxlength="8" />
+      <button id="joinBtn">Rejoindre</button>
+    </div>
+
+    <div class="hint">Astuce : partage juste le lien du salon quand tu y es 😉</div>
+  </div>
+
+  <script>
+    const createBtn = document.getElementById("createBtn");
+    const joinBtn = document.getElementById("joinBtn");
+    const roomInput = document.getElementById("roomInput");
+
+    createBtn.addEventListener("click", () => {
+      window.location.href = "/create";
+    });
+
+    joinBtn.addEventListener("click", () => {
+      const code = (roomInput.value || "").trim().toUpperCase();
+      if (!code) return;
+      window.location.href = `/room/${code}`;
+    });
+
+    roomInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") joinBtn.click();
+    });
+  </script>
+</body>
+</html>
