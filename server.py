@@ -57,6 +57,18 @@ COOP_FIREWALL_HP = {
     "impossible": 48,
 }
 COOP_FIREWALL_DAMAGE = 1
+COOP_DAMAGE_ON_WRONG = {
+    "easy": 2,
+    "medium": 3,
+    "hard": 4,
+    "impossible": 6,
+}
+COOP_TIMEOUT_DAMAGE = {
+    "easy": 1,
+    "medium": 2,
+    "hard": 3,
+    "impossible": 5,
+}
 
 
 def generate_room_code(n=5):
@@ -96,6 +108,12 @@ def get_time_limit(r):
     if r["game_type"] == "coop":
         return COOP_TIME_LIMITS.get(r["coop_difficulty"], COOP_TIME_LIMITS["easy"])
     return r["time_limit_easy"] if r["mode"] == "easy" else r["time_limit_hard"]
+
+def coop_wrong_damage(r):
+    return COOP_DAMAGE_ON_WRONG.get(r["coop_difficulty"], COOP_DAMAGE_ON_WRONG["medium"])
+
+def coop_timeout_damage(r):
+    return COOP_TIMEOUT_DAMAGE.get(r["coop_difficulty"], COOP_TIMEOUT_DAMAGE["medium"])
 
 def public_state(room_id: str):
     r = rooms[room_id]
@@ -166,7 +184,19 @@ def start_new_round(room_id: str):
         end_game(room_id)
         return
 
-    # on ne termine pas le match s'il ne reste qu'un survivant
+    alive = [sid for sid in r["players"] if r["hp"].get(sid, MAX_HP) > 0]
+
+    # en PVP, on termine si un seul survivant
+    if r["game_type"] == "pvp":
+        if len(alive) <= 1 and len(r["players"]) > 0:
+            end_game(room_id)
+            return
+
+    # en COOP, on termine si plus aucun joueur vivant
+    if r["game_type"] == "coop":
+        if len(alive) == 0 and len(r["players"]) > 0:
+            end_game(room_id)
+            return
 
     r["round_index"] += 1
     r["current_word"] = choose_word_no_recent(r)
@@ -200,7 +230,14 @@ def round_timer_task(room_id: str, token: str, seconds: int):
     r = rooms[room_id]
     if r["round_active"] and r["round_token"] == token:
         r["round_active"] = False
-        socketio.emit("round_timeout", {}, room=room_id)
+        if r["game_type"] == "coop":
+            dmg = coop_timeout_damage(r)
+            for sid in r["players"].keys():
+                r["hp"][sid] = max(0, r["hp"].get(sid, MAX_HP) - dmg)
+            socketio.emit("round_timeout", {"damage": dmg}, room=room_id)
+            emit_state(room_id)
+        else:
+            socketio.emit("round_timeout", {}, room=room_id)
         socketio.start_background_task(_delayed_next_round, room_id, 0.7)
 
 
@@ -470,6 +507,11 @@ def handle_input(data):
         if r["game_type"] == "pvp":
             r["hp"][request.sid] = max(0, r["hp"].get(request.sid, MAX_HP) - DAMAGE_ON_WRONG)
             emit("wrong", {"damage": DAMAGE_ON_WRONG, "hp": r["hp"][request.sid]})
+            emit_state(room_id)
+        elif r["game_type"] == "coop":
+            dmg = coop_wrong_damage(r)
+            r["hp"][request.sid] = max(0, r["hp"].get(request.sid, MAX_HP) - dmg)
+            emit("wrong", {"damage": dmg, "hp": r["hp"][request.sid]})
             emit_state(room_id)
 
 

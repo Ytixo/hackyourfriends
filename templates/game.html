@@ -44,6 +44,52 @@
       border-bottom:1px dashed rgba(0,255,102,.45);
     }
     #roomLink:hover{opacity:.9}
+    #damageFlash{
+      position:fixed;
+      inset:0;
+      background:rgba(255,40,40,.25);
+      opacity:0;
+      pointer-events:none;
+      z-index:20;
+    }
+    #damageFlash.flash{
+      animation: damageFlash .35s ease;
+    }
+    @keyframes damageFlash{
+      0%{opacity:0}
+      20%{opacity:.55}
+      100%{opacity:0}
+    }
+    .bossBarWrap{
+      display:none;
+      justify-content:center;
+      margin:4px 0 8px;
+      position:sticky;
+      top:58px;
+      z-index:9;
+    }
+    .bossBar{
+      width:min(720px, 92vw);
+      padding:6px;
+      border-radius:999px;
+      border:1px solid rgba(255,60,60,.6);
+      background:rgba(60,0,0,.45);
+      box-shadow: 0 0 24px rgba(255,40,40,.25);
+    }
+    .bossBarFill{
+      height:12px;
+      width:100%;
+      border-radius:999px;
+      background:linear-gradient(90deg, #ff4d4d 0%, #ff2b2b 55%, #b00000 100%);
+      transition: width .12s linear;
+    }
+    .bossBarText{
+      text-align:center;
+      margin-top:6px;
+      font-size:.9rem;
+      color:#ffd6d6;
+      letter-spacing:.5px;
+    }
     .row{display:flex;gap:16px;margin-top:14px;flex-wrap:wrap;align-items:flex-start}
     .panel{
       flex:1;min-width:300px;
@@ -197,6 +243,7 @@
 </head>
 <body>
 
+  <div id="damageFlash"></div>
   <div class="wrap" id="appWrap">
     <div class="top">
       <div class="pill">Salon 🔐: <strong id="roomCode">{{ room_id }}</strong></div>
@@ -205,6 +252,13 @@
       <div class="pill small" id="spectatorBadge" style="display:none;">👁️ Spectateur</div>
       <div class="pill small">Lien: <a id="roomLink" href="#" target="_blank" rel="noopener"></a></div>
       <div class="pill small">🔊 <button class="btn" id="soundBtn" style="padding:6px 10px;">ON</button></div>
+    </div>
+
+    <div id="firewallWrap" class="bossBarWrap">
+      <div class="bossBar">
+        <div class="bossBarFill" id="firewallFill"></div>
+      </div>
+      <div class="bossBarText" id="firewallText"></div>
     </div>
 
     <div class="row">
@@ -222,14 +276,6 @@
         <div id="hpWrap">
           <div class="small" style="margin-top:12px;">Vie (HP) ❤️</div>
           <div id="hpList"></div>
-        </div>
-
-        <div id="firewallWrap" style="display:none; margin-top:12px;">
-          <div class="small">Pare-feu 🔥</div>
-          <div class="hpBar" style="margin-top:6px;">
-            <div class="hpFill" id="firewallFill"></div>
-          </div>
-          <div class="small" id="firewallText" style="margin-top:6px; opacity:.9;"></div>
         </div>
 
         <h3 id="line"><span id="typed"></span><span id="cursor">█</span></h3>

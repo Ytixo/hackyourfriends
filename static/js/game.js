@@ -22,6 +22,7 @@
   const firewallWrap = document.getElementById("firewallWrap");
   const firewallFill = document.getElementById("firewallFill");
   const firewallText = document.getElementById("firewallText");
+  const damageFlash = document.getElementById("damageFlash");
 
   const roomLinkEl = document.getElementById("roomLink");
   const startBtn = document.getElementById("startBtn");
@@ -73,9 +74,7 @@
   }
 
   function setCoopUI(on) {
-    if (hpListEl) hpListEl.style.display = on ? "none" : "block";
-    if (document.getElementById("hpWrap")) document.getElementById("hpWrap").style.display = on ? "none" : "block";
-    if (firewallWrap) firewallWrap.style.display = on ? "block" : "none";
+    if (firewallWrap) firewallWrap.style.display = on ? "flex" : "none";
     if (modeSelect) modeSelect.disabled = on;
     if (setModeBtn) setModeBtn.disabled = on || !isHost;
     if (timeLimitInput) timeLimitInput.disabled = on || !isHost;
@@ -89,7 +88,14 @@
     const m = Math.max(1, Number(max) || 0);
     const h = Math.max(0, Math.min(m, Number(hp) || 0));
     firewallFill.style.width = `${(h / m) * 100}%`;
-    firewallText.textContent = `${h} / ${m}`;
+    firewallText.textContent = `PARE-FEU — ${h} / ${m}`;
+  }
+
+  function flashDamage() {
+    if (!damageFlash) return;
+    damageFlash.classList.remove("flash");
+    void damageFlash.offsetWidth;
+    damageFlash.classList.add("flash");
   }
 
   function shake() {
@@ -268,10 +274,11 @@
     let f1 = 880, f2 = 1320, dur = 0.08;
 
     if (type === "wrong") { f1 = 140; f2 = 90; dur = 0.12; }
+    if (type === "riposte") { f1 = 520; f2 = 110; dur = 0.16; }
     if (type === "win")   { f1 = 740; f2 = 1480; dur = 0.14; }
     if (type === "timeout"){ f1 = 220; f2 = 180; dur = 0.18; }
 
-    o.type = (type === "wrong") ? "sawtooth" : "triangle";
+    o.type = (type === "wrong" || type === "riposte") ? "sawtooth" : "triangle";
     o.frequency.setValueAtTime(f1, now);
     o.frequency.exponentialRampToValueAtTime(Math.max(40, f2), now + dur);
 
@@ -460,10 +467,17 @@
     beep("ok");
   });
 
-  socket.on("round_timeout", () => {
-    flashStatus("⏱️ Trop tard !", 900);
-    logPush("⏱️ Timeout");
-    beep("timeout");
+  socket.on("round_timeout", (data) => {
+    const dmg = Number(data?.damage) || 0;
+    if (gameType === "coop" && dmg > 0) {
+      flashStatus(`⏱️ Trop tard ! Riposte -${dmg}HP`, 900);
+      logPush(`⏱️ Timeout — riposte -${dmg}HP`);
+      flashDamage();
+    } else {
+      flashStatus("⏱️ Trop tard !", 900);
+      logPush("⏱️ Timeout");
+    }
+    beep(gameType === "coop" && dmg > 0 ? "riposte" : "timeout");
     shake();
   });
 
@@ -487,7 +501,12 @@
     const hp = data?.hp;
     flashStatus(`❌ Erreur ! -${dmg}HP`, 700);
     if (typeof hp === "number") logPush(`Erreur: -${dmg}HP (reste ${hp}HP)`);
-    beep("wrong");
+    if (gameType === "coop") {
+      flashDamage();
+      beep("riposte");
+    } else {
+      beep("wrong");
+    }
     shake();
   });
 
