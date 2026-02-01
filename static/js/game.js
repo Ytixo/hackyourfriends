@@ -1,10 +1,17 @@
 (() => {
   const socket = io();
   const room = (window.GAME_ROOM || "").trim().toUpperCase();
-  const username = (prompt("Pseudo ?") || "Player").trim() || "Player";
 
+  // ✅ pas de popup bloquante : pseudo stable via localStorage
+  const saved = localStorage.getItem("hyf_username");
+  let username = (saved || "").trim();
+  if (!username) {
+    username = "Player" + Math.floor(Math.random() * 9000 + 1000);
+    localStorage.setItem("hyf_username", username);
+  }
+
+  // DOM
   const appWrap = document.getElementById("appWrap");
-
   const typedEl = document.getElementById("typed");
   const wordEl = document.getElementById("word");
   const inputEl = document.getElementById("input");
@@ -21,24 +28,30 @@
   const copyBtn = document.getElementById("copyBtn");
   const startBtn = document.getElementById("startBtn");
 
-  const timeLimitSelect = document.getElementById("timeLimitSelect");
-  const setTimeBtn = document.getElementById("setTimeBtn");
-  const modeSelect = document.getElementById("modeSelect");
-  const setModeBtn = document.getElementById("setModeBtn");
-
   const timerBar = document.getElementById("timerBar");
   const timerFill = document.getElementById("timerFill");
 
   const soundBtn = document.getElementById("soundBtn");
 
+  // Settings (new)
+  const modeSelect = document.getElementById("modeSelect");
+  const setModeBtn = document.getElementById("setModeBtn");
+
+  const timeEasySelect = document.getElementById("timeEasySelect");
+  const timeHardSelect = document.getElementById("timeHardSelect");
+  const setEasyBtn = document.getElementById("setEasyBtn");
+  const setHardBtn = document.getElementById("setHardBtn");
+  const activeTimeLabel = document.getElementById("activeTimeLabel");
+
+  // State
   let gameStarted = false;
   let isHost = false;
   let currentMode = "easy";
   let matchStartTs = 0; // unix seconds (server)
 
-  // ---------- small helpers ----------
+  // ---------- helpers ----------
   const link = `${window.location.origin}/room/${room}`;
-  roomLinkEl.textContent = link;
+  if (roomLinkEl) roomLinkEl.textContent = link;
 
   copyBtn?.addEventListener("click", async () => {
     try { await navigator.clipboard.writeText(link); flashStatus("Lien copié 📋", 1200); }
@@ -60,6 +73,7 @@
   }
 
   function setLobbyMode(on) {
+    if (!inputEl) return;
     inputEl.disabled = on;
     inputEl.placeholder = on ? "En attente du lancement..." : "Écris puis Entrée";
     inputEl.value = "";
@@ -68,14 +82,19 @@
   function shake() {
     if (!appWrap) return;
     appWrap.classList.remove("shake");
-    // force reflow
     void appWrap.offsetWidth;
     appWrap.classList.add("shake");
   }
 
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, m => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[m]));
+  }
+
   // ---------- typewriter ----------
   let typeTimer = null;
-  function typewrite(text, cps = 85) {
+  function typewrite(text, cps = 90) {
     clearInterval(typeTimer);
     if (typedEl) typedEl.textContent = "";
     let i = 0;
@@ -89,19 +108,24 @@
 
   // ---------- timer (number + bar) ----------
   let roundInterval = null;
-  let roundEndsAt = 0;      // ms
-  let roundDuration = 0;    // ms
+  let roundEndsAt = 0;
+  let roundDuration = 0;
 
   function setTimerDanger(on) {
-    if (!timerBar) return;
-    timerBar.classList.toggle("timerDanger", !!on);
+    timerBar?.classList.toggle("timerDanger", !!on);
+  }
+
+  function setBar(ratio) {
+    if (!timerFill) return;
+    const r = Math.max(0, Math.min(1, ratio));
+    timerFill.style.transform = `scaleX(${r})`;
   }
 
   function startRoundTimer(seconds) {
     clearInterval(roundInterval);
 
     const s = Number(seconds) || 0;
-    timerEl.textContent = String(s);
+    if (timerEl) timerEl.textContent = String(s);
 
     roundDuration = s * 1000;
     roundEndsAt = Date.now() + roundDuration;
@@ -112,7 +136,7 @@
     roundInterval = setInterval(() => {
       const leftMs = Math.max(0, roundEndsAt - Date.now());
       const leftS = Math.ceil(leftMs / 1000);
-      timerEl.textContent = String(leftS);
+      if (timerEl) timerEl.textContent = String(leftS);
 
       const ratio = roundDuration ? (leftMs / roundDuration) : 0;
       setBar(ratio);
@@ -125,13 +149,7 @@
     }, 80);
   }
 
-  function setBar(ratio) {
-    if (!timerFill) return;
-    const r = Math.max(0, Math.min(1, ratio));
-    timerFill.style.transform = `scaleX(${r})`;
-  }
-
-  // ---------- match timer (use server ts) ----------
+  // ---------- match timer ----------
   let matchInterval = null;
   function startMatchTimer(serverStartTs) {
     matchStartTs = Number(serverStartTs) || 0;
@@ -140,17 +158,16 @@
     const tick = () => {
       if (!matchStartTs) return;
       const s = (Date.now()/1000 - matchStartTs).toFixed(1);
-      matchTimerEl.textContent = s;
+      if (matchTimerEl) matchTimerEl.textContent = s;
     };
     tick();
     matchInterval = setInterval(tick, 100);
   }
-  function stopMatchTimer() {
-    clearInterval(matchInterval);
-  }
+  function stopMatchTimer() { clearInterval(matchInterval); }
 
   // ---------- scoreboard + hp ----------
   function renderScores(players) {
+    if (!scoresEl) return;
     scoresEl.innerHTML = "";
     players.forEach(p => {
       const li = document.createElement("li");
@@ -185,21 +202,7 @@
     });
   }
 
-  function escapeHtml(s){
-    return String(s).replace(/[&<>"']/g, m => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
-    }[m]));
-  }
-
-  // ---------- cyber log burst ----------
-  function hackBurst(winner, ms) {
-    logPush(`⚡ ${winner} > BYPASS FIREWALL (${ms}ms)`);
-    logPush(`🔓 ACCESS GRANTED`);
-    logPush(`⬇️  EXFILTRATING DATA...`);
-    setTimeout(() => logPush(`✅ DONE`), 380);
-  }
-
-  // ---------- mode (hard masking & hide word) ----------
+  // ---------- mode ----------
   let hideWordTimer = null;
   function applyMode(mode, revealMs) {
     currentMode = mode || "easy";
@@ -210,16 +213,16 @@
     if (currentMode === "hard") {
       inputEl.type = "password";
       if (revealMs && revealMs > 0) {
-        hideWordTimer = setTimeout(() => { wordEl.textContent = "••••"; }, revealMs);
+        hideWordTimer = setTimeout(() => { if (wordEl) wordEl.textContent = "••••"; }, revealMs);
       } else {
-        wordEl.textContent = "••••";
+        if (wordEl) wordEl.textContent = "••••";
       }
     } else {
       inputEl.type = "text";
     }
   }
 
-  // ---------- SFX (WebAudio, no files) ----------
+  // ---------- SFX ----------
   let soundOn = true;
   let audioCtx = null;
 
@@ -239,7 +242,6 @@
 
     const now = ctx.currentTime;
     let f1 = 880, f2 = 1320, dur = 0.08;
-
     if (type === "wrong") { f1 = 140; f2 = 90; dur = 0.12; }
     if (type === "win")   { f1 = 740; f2 = 1480; dur = 0.14; }
     if (type === "timeout"){ f1 = 220; f2 = 180; dur = 0.18; }
@@ -261,9 +263,57 @@
     soundBtn.textContent = soundOn ? "ON" : "OFF";
     if (soundOn) beep("ok");
   });
-
-  // unlock audio on first interaction
   window.addEventListener("pointerdown", () => { if (soundOn) ensureAudio(); }, { once: true });
+
+  // ---------- SETTINGS SYNC ----------
+  function setActiveTimeLabel(timeLimit) {
+    if (!activeTimeLabel) return;
+    activeTimeLabel.textContent = `${timeLimit ?? "—"}s (${currentMode.toUpperCase()})`;
+  }
+
+  function syncSettingsFromServer(data) {
+    // mode + time limits
+    if (data?.mode) currentMode = data.mode;
+    if (modeSelect) modeSelect.value = currentMode;
+
+    if (typeof data?.time_limit_easy === "number" && timeEasySelect) {
+      timeEasySelect.value = String(data.time_limit_easy);
+    }
+    if (typeof data?.time_limit_hard === "number" && timeHardSelect) {
+      timeHardSelect.value = String(data.time_limit_hard);
+    }
+    if (typeof data?.time_limit === "number") {
+      setActiveTimeLabel(data.time_limit);
+    }
+  }
+
+  function setHostUI(host) {
+    const dis = !host;
+    if (setModeBtn) setModeBtn.disabled = dis;
+    if (setEasyBtn) setEasyBtn.disabled = dis;
+    if (setHardBtn) setHardBtn.disabled = dis;
+    if (modeSelect) modeSelect.disabled = dis;
+    if (timeEasySelect) timeEasySelect.disabled = dis;
+    if (timeHardSelect) timeHardSelect.disabled = dis;
+  }
+
+  // ---------- ONE-TIME button listeners ----------
+  setModeBtn?.addEventListener("click", () => {
+    const mode = (modeSelect?.value || "easy").toLowerCase();
+    socket.emit("set_mode", { room, mode });
+  });
+
+  setEasyBtn?.addEventListener("click", () => {
+    const val = Number(timeEasySelect?.value);
+    if (!Number.isFinite(val)) return;
+    socket.emit("set_time_limit", { room, target: "easy", seconds: val });
+  });
+
+  setHardBtn?.addEventListener("click", () => {
+    const val = Number(timeHardSelect?.value);
+    if (!Number.isFinite(val)) return;
+    socket.emit("set_time_limit", { room, target: "hard", seconds: val });
+  });
 
   // ---------- join ----------
   if (!room) { window.location.href = "/"; return; }
@@ -272,118 +322,70 @@
   socket.on("joined", (data) => {
     isHost = !!data?.is_host;
     gameStarted = !!data?.started;
-    currentMode = data?.mode || "easy";
+
+    setHostUI(isHost);
+    syncSettingsFromServer(data);
 
     if (startBtn) {
       startBtn.style.display = (isHost && !gameStarted) ? "inline-block" : "none";
       startBtn.onclick = () => socket.emit("start_game", { room });
     }
 
-    if (setTimeBtn) setTimeBtn.disabled = !isHost;
-    if (timeLimitSelect && typeof data?.time_limit === "number") {
-        timeLimitSelect.value = String(data.time_limit);
-    }
-    if (setModeBtn) setModeBtn.disabled = !isHost;
-    if (modeSelect) modeSelect.value = currentMode;
-
     setLobbyMode(!gameStarted);
-
     flashStatus(`Connecté ✅ (${username})`, 1000);
     logPush(`Connecté au salon ${room}`);
-    inputEl.focus();
-
-    setTimeBtn?.addEventListener("click", () => {
-    const val = Number(timeLimitSelect?.value);
-    if (!Number.isFinite(val)) return;
-        socket.emit("set_time_limit", { room, seconds: val });
-    });
+    inputEl?.focus();
   });
 
-  // set time limit
-  setTimeBtn?.addEventListener("click", () => {
-    const val = Number(timeLimitInput?.value);
-    if (!Number.isFinite(val)) return;
-    socket.emit("set_time_limit", { room, seconds: val });
-  });
-  socket.on("time_limit_updated", (data) => {
-    const s = data?.seconds;
-    if (s && timeLimitInput) timeLimitInput.value = s;
-    flashStatus(`⏱️ Temps: ${s}s`, 1200);
-    logPush(`Temps par round: ${s}s`);
-    beep("ok");
-  });
-
-  // mode select
-  setModeBtn?.addEventListener("click", () => {
-    const mode = (modeSelect?.value || "easy").toLowerCase();
-    socket.emit("set_mode", { room, mode });
-  });
-  socket.on("mode_updated", (data) => {
-  currentMode = (data?.mode || "easy");
-  if (modeSelect) modeSelect.value = currentMode;
-
-  // met à jour le temps affiché selon le mode
-  if (timeLimitSelect && typeof data?.time_limit === "number") {
-    timeLimitSelect.value = String(data.time_limit);
- }
- setTimeBtn?.addEventListener("click", () => {
-  const val = Number(timeLimitSelect?.value);
-  if (!Number.isFinite(val)) return;
-    socket.emit("set_time_limit", { room, seconds: val });
- });
-
-  flashStatus(`Mode: ${currentMode.toUpperCase()}`, 1200);
-  logPush(`Mode réglé: ${currentMode}`);
-  applyMode(currentMode, 0);
-});
-
-  // lobby
+  // lobby state
   socket.on("lobby_state", (data) => {
+    // settings always sync (even if started=false)
+    syncSettingsFromServer(data);
+
     if (!data?.started) {
       gameStarted = false;
       setLobbyMode(true);
       stopMatchTimer();
-      matchTimerEl.textContent = "0.0";
+      if (matchTimerEl) matchTimerEl.textContent = "0.0";
       setBar(1);
       setTimerDanger(false);
-
-      currentMode = data?.mode || currentMode;
-      if (modeSelect) modeSelect.value = currentMode;
 
       roundInfoEl.textContent =
         `Lobby 👥 (${data.players?.length || 0} joueurs) — Host: ${data.host_name || "?"}`;
 
-      wordEl.textContent = "---";
+      if (wordEl) wordEl.textContent = "---";
       if (typedEl) typedEl.textContent = "";
-      timerEl.textContent = "0";
+      if (timerEl) timerEl.textContent = "0";
 
       if (startBtn) startBtn.style.display = (isHost && !gameStarted) ? "inline-block" : "none";
-      if (setTimeBtn) setTimeBtn.disabled = !isHost;
-      if (setModeBtn) setModeBtn.disabled = !isHost;
-
-      applyMode("easy", 0)
-      
-      if (typeof data?.time_limit === "number" && timeLimitInput) {
-        timeLimitInput.value = data.time_limit;
-        }
-        if (modeSelect) modeSelect.value = data?.mode || currentMode;
-
-      setTimeBtn?.addEventListener("click", () => {
-      const val = Number(timeLimitSelect?.value);
-      if (!Number.isFinite(val)) return;
-        socket.emit("set_time_limit", { room, seconds: val });
-      });
+      applyMode("easy", 0);
     }
   });
 
+  // settings events
+  socket.on("mode_updated", (data) => {
+    syncSettingsFromServer(data);
+    flashStatus(`Mode: ${currentMode.toUpperCase()}`, 1100);
+    logPush(`Mode: ${currentMode} (temps actif ${data?.time_limit ?? "?"}s)`);
+    beep("ok");
+  });
+
+  socket.on("time_limits_updated", (data) => {
+    syncSettingsFromServer(data);
+    flashStatus(`⏱️ Easy ${data.time_limit_easy}s • Hard ${data.time_limit_hard}s`, 1400);
+    logPush(`Temps maj: easy=${data.time_limit_easy}s hard=${data.time_limit_hard}s`);
+    beep("ok");
+  });
+
+  // game started
   socket.on("game_started", (data) => {
     gameStarted = true;
     setLobbyMode(false);
 
-    currentMode = data?.mode || currentMode;
+    // mode from server
+    if (data?.mode) currentMode = data.mode;
     applyMode(currentMode, 0);
 
-    // NOTE: on attend surtout round_start pour avoir match_start_ts serveur
     flashStatus("▶ Partie lancée !", 1200);
     logPush(`Partie lancée (${data?.round_total || 30} mots) en ${currentMode.toUpperCase()}`);
     if (startBtn) startBtn.style.display = "none";
@@ -406,7 +408,7 @@
 
     typewrite(line, 92);
 
-    wordEl.textContent = word;
+    if (wordEl) wordEl.textContent = word;
     applyMode(mode, revealMs);
 
     roundInfoEl.textContent = `Mot ${idx}/${total} ⚡`;
@@ -415,9 +417,10 @@
 
     startRoundTimer(seconds);
 
-    // ✅ match timer correct (depuis serveur)
+    // match timer correct (depuis serveur)
     if (msTs) startMatchTimer(msTs);
 
+    setActiveTimeLabel(seconds);
     logPush(`Nouveau mot: "${word}"`);
     beep("ok");
   });
@@ -434,8 +437,8 @@
     const ms = data?.ms ?? 0;
     const dmg = data?.damage ?? 0;
 
-    flashStatus(`🏆 ${winner} (${ms}ms) -${dmg}HP`, 1700);
-    hackBurst(winner, ms);
+    flashStatus(`🏆 ${winner} (${ms}ms) -${dmg}HP`, 1400);
+    logPush(`⚡ ${winner} gagne le round (${ms}ms)`);
     beep("win");
     shake();
   });
@@ -463,15 +466,15 @@
     const totalMs = data?.total_ms ?? 0;
     const totalS = (totalMs / 1000).toFixed(2);
 
-    flashStatus(`✅ Terminé en ${totalS}s`, 2500);
+    flashStatus(`✅ Terminé en ${totalS}s`, 2200);
     logPush(`🏁 Fin de partie (${totalS}s)`);
 
     const top = (data?.players ?? [])[0];
     if (top) {
-        flashStatus(`🏆 ${top.name} gagne la partie !`, 2500);
-        logPush(`🏁 Fin — Gagnant: ${top.name} (${top.score} pts, ${top.hp}HP)`);
+      flashStatus(`🏆 ${top.name} gagne la partie !`, 2200);
+      logPush(`Gagnant: ${top.name} (${top.score} pts, ${top.hp}HP)`);
     } else {
-        flashStatus(`🏁 Partie terminée`, 2000);
+      flashStatus(`🏁 Partie terminée`, 1800);
     }
 
     if (startBtn) startBtn.style.display = isHost ? "inline-block" : "none";
@@ -480,7 +483,7 @@
   });
 
   // input
-  inputEl.addEventListener("keydown", (e) => {
+  inputEl?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       if (!gameStarted) return;
       socket.emit("player_input", { room, input: inputEl.value });

@@ -231,42 +231,50 @@
       <div class="panel">
         <div class="small">Scores 🏆</div>
         <ul id="scores"></ul>
-
         <hr style="border:0;border-top:1px solid rgba(0,255,102,.25); margin:14px 0;">
-
-        <div class="small">Paramètres (hôte)</div>
-        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:8px;">
-          <select id="modeSelect">
-            <option value="easy">Easy (mot visible)</option>
-            <option value="hard">Hard (mot visible 0.5s + caché)</option>
-          </select>
-          <button class="btn" id="setModeBtn">Appliquer</button>
-        </div>
-
-        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:8px;">
-          <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:8px;">
-            <select id="timeLimitSelect">
-                <option value="3">3s</option>
-                <option value="4">4s</option>
-                <option value="5">5s</option>
-                <option value="6">6s</option>
-                <option value="7" selected>7s</option>
-                <option value="8">8s</option>
-                <option value="9">9s</option>
-                <option value="10">10s</option>
-                <option value="12">12s</option>
-                <option value="15">15s</option>
-                <option value="20">20s</option>
-                <option value="25">25s</option>
-                <option value="30">30s</option>
-            </select>
-            <button class="btn" id="setTimeBtn">Appliquer</button>
-            </div>
-        <div class="small" style="margin-top:8px;">(temps par round, selon le mode)</div>
-            <button class="btn" id="setTimeBtn">Appliquer</button>
-        </div>
-        <div class="small" style="margin-top:8px;">(3 à 30 secondes)</div>
       </div>
+
+      <div class="small">Paramètres ⚙️ (hôte)</div>
+
+<div class="settings">
+  <label class="small">Mode</label>
+  <div class="settingsRow">
+    <select id="modeSelect">
+      <option value="easy">Easy (mot visible)</option>
+      <option value="hard">Hard (mot visible 0.5s + caché)</option>
+    </select>
+    <button class="btn" id="setModeBtn">Appliquer</button>
+  </div>
+
+  <label class="small" style="margin-top:10px;">Temps Easy</label>
+  <div class="settingsRow">
+    <select id="timeEasySelect">
+      <option value="3">3s</option><option value="4">4s</option><option value="5">5s</option>
+      <option value="6">6s</option><option value="7">7s</option><option value="8">8s</option>
+      <option value="9">9s</option><option value="10">10s</option><option value="12">12s</option>
+      <option value="15">15s</option><option value="20">20s</option><option value="25">25s</option>
+      <option value="30">30s</option>
+    </select>
+    <button class="btn" id="setEasyBtn">Appliquer</button>
+  </div>
+
+  <label class="small" style="margin-top:10px;">Temps Hard</label>
+  <div class="settingsRow">
+    <select id="timeHardSelect">
+      <option value="3">3s</option><option value="4">4s</option><option value="5">5s</option>
+      <option value="6">6s</option><option value="7">7s</option><option value="8">8s</option>
+      <option value="9">9s</option><option value="10">10s</option><option value="12">12s</option>
+      <option value="15">15s</option><option value="20">20s</option><option value="25">25s</option>
+      <option value="30">30s</option>
+    </select>
+    <button class="btn" id="setHardBtn">Appliquer</button>
+  </div>
+
+  <div class="small" style="margin-top:10px;">
+    Temps actif : <strong id="activeTimeLabel">—</strong>
+  </div>
+</div>
+
     </div>
   </div>
 
