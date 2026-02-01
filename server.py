@@ -47,14 +47,20 @@ RECENT_WORD_WINDOW = 2         # le mot ne peut pas réapparaitre dans les 2 pro
 COOP_TIME_LIMITS = {
     "easy": 7,
     "medium": 6,
-    "hard": 5,
-    "impossible": 4,
+    "hard": 3,
+    "impossible": 2,
 }
 COOP_FIREWALL_HP = {
     "easy": 20,
     "medium": 28,
     "hard": 36,
     "impossible": 48,
+}
+COOP_WORD_REVEAL_MS = {
+    "easy": 999999,
+    "medium": 999999,
+    "hard": 500,
+    "impossible": 300,
 }
 COOP_FIREWALL_DAMAGE = 1
 COOP_DAMAGE_ON_WRONG = {
@@ -102,6 +108,7 @@ def ensure_room(room_id: str):
             "recent_words": [],  # anti-repeat
             "firewall_hp": 0,
             "firewall_max": 0,
+            "coop_fail_streak": 0,
         }
 
 def get_time_limit(r):
@@ -114,6 +121,17 @@ def coop_wrong_damage(r):
 
 def coop_timeout_damage(r):
     return COOP_TIMEOUT_DAMAGE.get(r["coop_difficulty"], COOP_TIMEOUT_DAMAGE["medium"])
+
+def coop_riposte_bonus(r):
+    if r["coop_difficulty"] != "impossible":
+        return 0
+    return max(0, int(r.get("coop_fail_streak", 0)) - 1)
+
+def coop_word_reveal_ms(r):
+    return COOP_WORD_REVEAL_MS.get(r["coop_difficulty"], COOP_WORD_REVEAL_MS["medium"])
+
+def coop_round_mode(r):
+    return "hard" if r["coop_difficulty"] in ("hard", "impossible") else "easy"
 
 def public_state(room_id: str):
     r = rooms[room_id]
@@ -207,15 +225,22 @@ def start_new_round(room_id: str):
 
     seconds = get_time_limit(r)
 
+    if r["game_type"] == "coop":
+        round_mode = coop_round_mode(r)
+        reveal_ms = coop_word_reveal_ms(r)
+    else:
+        round_mode = r["mode"]
+        reveal_ms = 500 if r["mode"] == "hard" else 999999
+
     socketio.emit("round_start", {
         "line": r["current_line"],
         "word": r["current_word"],
         "round_index": r["round_index"],
         "round_total": r["round_total"],
         "seconds": seconds,
-        "mode": r["mode"],
+        "mode": round_mode,
         "game_type": r["game_type"],
-        "word_reveal_ms": 500 if r["mode"] == "hard" else 999999,
+        "word_reveal_ms": reveal_ms,
         "match_start_ts": r["match_start_ts"],
     }, room=room_id)
 
@@ -231,7 +256,8 @@ def round_timer_task(room_id: str, token: str, seconds: int):
     if r["round_active"] and r["round_token"] == token:
         r["round_active"] = False
         if r["game_type"] == "coop":
-            dmg = coop_timeout_damage(r)
+            r["coop_fail_streak"] = int(r.get("coop_fail_streak", 0)) + 1
+            dmg = coop_timeout_damage(r) + coop_riposte_bonus(r)
             for sid in r["players"].keys():
                 r["hp"][sid] = max(0, r["hp"].get(sid, MAX_HP) - dmg)
             socketio.emit("round_timeout", {"damage": dmg}, room=room_id)
@@ -431,6 +457,7 @@ def start_game(data):
         diff = r["coop_difficulty"]
         r["firewall_max"] = COOP_FIREWALL_HP.get(diff, COOP_FIREWALL_HP["easy"])
         r["firewall_hp"] = r["firewall_max"]
+        r["coop_fail_streak"] = 0
 
     socketio.emit("game_started", {"round_total": r["round_total"], "mode": r["mode"]}, room=room_id)
     emit_state(room_id)
@@ -459,6 +486,7 @@ def handle_input(data):
         r["scores"][request.sid] = r["scores"].get(request.sid, 0) + 1
 
         if r["game_type"] == "coop":
+            r["coop_fail_streak"] = 0
             r["firewall_hp"] = max(0, r["firewall_hp"] - COOP_FIREWALL_DAMAGE)
             winner_name = r["players"].get(request.sid, "Unknown")
             elapsed_ms = int((time.time() - r["round_start_ts"]) * 1000)
