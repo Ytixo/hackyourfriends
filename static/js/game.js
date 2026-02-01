@@ -18,6 +18,10 @@
   const roundInfoEl = document.getElementById("roundInfo");
   const statusEl = document.getElementById("status");
   const logEl = document.getElementById("log");
+  const spectatorBadge = document.getElementById("spectatorBadge");
+  const firewallWrap = document.getElementById("firewallWrap");
+  const firewallFill = document.getElementById("firewallFill");
+  const firewallText = document.getElementById("firewallText");
 
   const roomLinkEl = document.getElementById("roomLink");
   const startBtn = document.getElementById("startBtn");
@@ -26,6 +30,10 @@
   const setTimeBtn = document.getElementById("setTimeBtn");
   const modeSelect = document.getElementById("modeSelect");
   const setModeBtn = document.getElementById("setModeBtn");
+  const gameTypeSelect = document.getElementById("gameTypeSelect");
+  const setGameTypeBtn = document.getElementById("setGameTypeBtn");
+  const coopDifficultySelect = document.getElementById("coopDifficultySelect");
+  const setCoopDifficultyBtn = document.getElementById("setCoopDifficultyBtn");
 
   const timerBar = document.getElementById("timerBar");
   const timerFill = document.getElementById("timerFill");
@@ -35,6 +43,8 @@
   let gameStarted = false;
   let isHost = false;
   let currentMode = "easy";
+  let gameType = "pvp";
+  let coopDifficulty = "easy";
   let matchStartTs = 0; // unix seconds (server)
 
   // ---------- small helpers ----------
@@ -60,6 +70,26 @@
     inputEl.disabled = on;
     inputEl.placeholder = on ? "En attente du lancement..." : "Écris puis Entrée";
     inputEl.value = "";
+  }
+
+  function setCoopUI(on) {
+    if (hpListEl) hpListEl.style.display = on ? "none" : "block";
+    if (document.getElementById("hpWrap")) document.getElementById("hpWrap").style.display = on ? "none" : "block";
+    if (firewallWrap) firewallWrap.style.display = on ? "block" : "none";
+    if (modeSelect) modeSelect.disabled = on;
+    if (setModeBtn) setModeBtn.disabled = on || !isHost;
+    if (timeLimitInput) timeLimitInput.disabled = on || !isHost;
+    if (setTimeBtn) setTimeBtn.disabled = on || !isHost;
+    if (coopDifficultySelect) coopDifficultySelect.disabled = !on || !isHost;
+    if (setCoopDifficultyBtn) setCoopDifficultyBtn.disabled = !on || !isHost;
+  }
+
+  function renderFirewall(hp, max) {
+    if (!firewallFill || !firewallText) return;
+    const m = Math.max(1, Number(max) || 0);
+    const h = Math.max(0, Math.min(m, Number(hp) || 0));
+    firewallFill.style.width = `${(h / m) * 100}%`;
+    firewallText.textContent = `${h} / ${m}`;
   }
 
   function shake() {
@@ -270,6 +300,8 @@
     isHost = !!data?.is_host;
     gameStarted = !!data?.started;
     currentMode = data?.mode || "easy";
+    gameType = data?.game_type || "pvp";
+    coopDifficulty = data?.coop_difficulty || "easy";
 
     if (startBtn) {
       startBtn.style.display = (isHost && !gameStarted) ? "inline-block" : "none";
@@ -281,8 +313,11 @@
 
     if (setModeBtn) setModeBtn.disabled = !isHost;
     if (modeSelect) modeSelect.value = currentMode;
+    if (gameTypeSelect) gameTypeSelect.value = gameType;
+    if (coopDifficultySelect) coopDifficultySelect.value = coopDifficulty;
 
     setLobbyMode(!gameStarted);
+    setCoopUI(gameType === "coop");
 
     flashStatus(`Connecté ✅ (${username})`, 1000);
     logPush(`Connecté au salon ${room}`);
@@ -316,6 +351,31 @@
     beep("ok");
   });
 
+  setGameTypeBtn?.addEventListener("click", () => {
+    const gt = (gameTypeSelect?.value || "pvp").toLowerCase();
+    socket.emit("set_game_type", { room, game_type: gt });
+  });
+
+  socket.on("game_type_updated", (data) => {
+    gameType = data?.game_type || "pvp";
+    if (gameTypeSelect) gameTypeSelect.value = gameType;
+    setCoopUI(gameType === "coop");
+    flashStatus(`Mode jeu: ${gameType.toUpperCase()}`, 1200);
+    logPush(`Mode jeu: ${gameType}`);
+  });
+
+  setCoopDifficultyBtn?.addEventListener("click", () => {
+    const diff = (coopDifficultySelect?.value || "easy").toLowerCase();
+    socket.emit("set_coop_difficulty", { room, difficulty: diff });
+  });
+
+  socket.on("coop_difficulty_updated", (data) => {
+    coopDifficulty = data?.difficulty || "easy";
+    if (coopDifficultySelect) coopDifficultySelect.value = coopDifficulty;
+    flashStatus(`Difficulté: ${coopDifficulty.toUpperCase()}`, 1200);
+    logPush(`Difficulté: ${coopDifficulty}`);
+  });
+
   // lobby
   socket.on("lobby_state", (data) => {
     if (!data?.started) {
@@ -328,6 +388,12 @@
 
       currentMode = data?.mode || currentMode;
       if (modeSelect) modeSelect.value = currentMode;
+      gameType = data?.game_type || gameType;
+      coopDifficulty = data?.coop_difficulty || coopDifficulty;
+      if (gameTypeSelect) gameTypeSelect.value = gameType;
+      if (coopDifficultySelect) coopDifficultySelect.value = coopDifficulty;
+      setCoopUI(gameType === "coop");
+      renderFirewall(data?.firewall_hp, data?.firewall_max);
 
       roundInfoEl.textContent =
         `Lobby 👥 (${data.players?.length || 0} joueurs) — Host: ${data.host_name || "?"}`;
@@ -369,6 +435,7 @@
     const total = data?.round_total ?? 0;
     const seconds = data?.seconds ?? 0;
     const mode = data?.mode ?? "easy";
+    const gt = data?.game_type ?? "pvp";
     const revealMs = data?.word_reveal_ms ?? 0;
     const msTs = data?.match_start_ts ?? 0;
 
@@ -376,6 +443,9 @@
 
     wordEl.textContent = word;
     applyMode(mode, revealMs);
+    gameType = gt;
+    if (gameTypeSelect) gameTypeSelect.value = gameType;
+    setCoopUI(gameType === "coop");
 
     roundInfoEl.textContent = `Mot ${idx}/${total} ⚡`;
     inputEl.value = "";
@@ -402,7 +472,11 @@
     const ms = data?.ms ?? 0;
     const dmg = data?.damage ?? 0;
 
-    flashStatus(`🏆 ${winner} (${ms}ms) -${dmg}HP`, 1700);
+    if (gameType === "coop") {
+      flashStatus(`🏆 ${winner} (${ms}ms) pare-feu -${dmg}`, 1700);
+    } else {
+      flashStatus(`🏆 ${winner} (${ms}ms) -${dmg}HP`, 1700);
+    }
     hackBurst(winner, ms);
     beep("win");
     shake();
@@ -421,6 +495,25 @@
     const players = data?.players ?? [];
     renderScores(players);
     renderHP(players);
+    if (data?.game_type) {
+      gameType = data.game_type;
+      if (gameTypeSelect) gameTypeSelect.value = gameType;
+      setCoopUI(gameType === "coop");
+    }
+    if (gameType === "coop") {
+      renderFirewall(data?.firewall_hp, data?.firewall_max);
+    }
+
+    const me = players.find(p => p.name === username);
+    const isSpectator = !!me && Number(me.hp) <= 0;
+    if (spectatorBadge) spectatorBadge.style.display = isSpectator ? "inline-block" : "none";
+    if (isSpectator) {
+      inputEl.disabled = true;
+      inputEl.placeholder = "Spectateur";
+    } else if (gameStarted) {
+      inputEl.disabled = false;
+      inputEl.placeholder = "Écris puis Entrée";
+    }
   });
 
   socket.on("game_over", (data) => {

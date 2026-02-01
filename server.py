@@ -37,10 +37,26 @@ DEFAULT_TIME_LIMIT_HARD = 3
 ROUNDS_TOTAL = 30
 
 MAX_HP = 100
-DAMAGE_ON_WIN = 5              # dégâts à tous les autres quand quelqu’un gagne un round
+DAMAGE_ON_WIN = 5              # dégâts de base à tous les autres quand quelqu’un gagne un round
+DAMAGE_SPEED_BONUS_MAX = 6     # bonus max si très rapide (ajouté au dégât de base)
 DAMAGE_ON_WRONG = 2            # dégâts sur erreur (anti-bourrin)
+HEAL_ON_WIN_EASY = 4           # soin accordé au gagnant en easy uniquement
 
 RECENT_WORD_WINDOW = 2         # le mot ne peut pas réapparaitre dans les 2 prochains rounds
+
+COOP_TIME_LIMITS = {
+    "easy": 7,
+    "medium": 6,
+    "hard": 5,
+    "impossible": 4,
+}
+COOP_FIREWALL_HP = {
+    "easy": 20,
+    "medium": 28,
+    "hard": 36,
+    "impossible": 48,
+}
+COOP_FIREWALL_DAMAGE = 1
 
 
 def generate_room_code(n=5):
@@ -61,6 +77,8 @@ def ensure_room(room_id: str):
             "round_total": ROUNDS_TOTAL,
 
             "mode": "easy",     # easy | hard
+            "game_type": "pvp", # pvp | coop
+            "coop_difficulty": "easy",
             "round_index": 0,
             "round_active": False,
             "current_word": "",
@@ -70,9 +88,13 @@ def ensure_room(room_id: str):
 
             "match_start_ts": 0.0,
             "recent_words": [],  # anti-repeat
+            "firewall_hp": 0,
+            "firewall_max": 0,
         }
 
 def get_time_limit(r):
+    if r["game_type"] == "coop":
+        return COOP_TIME_LIMITS.get(r["coop_difficulty"], COOP_TIME_LIMITS["easy"])
     return r["time_limit_easy"] if r["mode"] == "easy" else r["time_limit_hard"]
 
 def public_state(room_id: str):
@@ -98,11 +120,21 @@ def lobby_payload(room_id: str):
         "host_name": r["players"].get(r["host_sid"], "Host"),
         "mode": r["mode"],
         "time_limit": get_time_limit(r),
+        "game_type": r["game_type"],
+        "coop_difficulty": r["coop_difficulty"],
+        "firewall_hp": r["firewall_hp"],
+        "firewall_max": r["firewall_max"],
     }
 
 
 def emit_state(room_id: str):
-    socketio.emit("state", {"players": public_state(room_id)}, room=room_id)
+    r = rooms[room_id]
+    socketio.emit("state", {
+        "players": public_state(room_id),
+        "game_type": r["game_type"],
+        "firewall_hp": r["firewall_hp"],
+        "firewall_max": r["firewall_max"],
+    }, room=room_id)
 
 
 def choose_word_no_recent(r):
@@ -130,11 +162,11 @@ def start_new_round(room_id: str):
         end_game(room_id)
         return
 
-    # fin si un seul survivant (optionnel)
-    alive = [sid for sid in r["players"] if r["hp"].get(sid, MAX_HP) > 0]
-    if len(alive) <= 1 and len(r["players"]) > 0:
+    if r["game_type"] == "coop" and r["firewall_hp"] <= 0:
         end_game(room_id)
         return
+
+    # on ne termine pas le match s'il ne reste qu'un survivant
 
     r["round_index"] += 1
     r["current_word"] = choose_word_no_recent(r)
@@ -152,6 +184,7 @@ def start_new_round(room_id: str):
         "round_total": r["round_total"],
         "seconds": seconds,
         "mode": r["mode"],
+        "game_type": r["game_type"],
         "word_reveal_ms": 500 if r["mode"] == "hard" else 999999,
         "match_start_ts": r["match_start_ts"],
     }, room=room_id)
@@ -228,7 +261,11 @@ def handle_join(data):
         "time_limit": get_time_limit(r),
         "round_total": r["round_total"],
         "mode": r["mode"],
+        "game_type": r["game_type"],
+        "coop_difficulty": r["coop_difficulty"],
         "max_hp": MAX_HP,
+        "firewall_hp": r["firewall_hp"],
+        "firewall_max": r["firewall_max"],
     })
 
 
@@ -284,6 +321,52 @@ def handle_set_mode(data):
     socketio.emit("lobby_state", lobby_payload(room_id), room=room_id)
 
 
+@socketio.on("set_game_type")
+def handle_set_game_type(data):
+    room_id = (data.get("room") or "").strip().upper()
+    game_type = (data.get("game_type") or "").strip().lower()
+
+    if room_id not in rooms:
+        return
+    r = rooms[room_id]
+    if request.sid != r["host_sid"]:
+        return
+    if game_type not in ("pvp", "coop"):
+        return
+    if r["started"]:
+        return
+
+    r["game_type"] = game_type
+    if game_type == "coop":
+        diff = r["coop_difficulty"]
+        r["firewall_max"] = COOP_FIREWALL_HP.get(diff, COOP_FIREWALL_HP["easy"])
+        r["firewall_hp"] = r["firewall_max"]
+    socketio.emit("game_type_updated", {"game_type": game_type}, room=room_id)
+    socketio.emit("lobby_state", lobby_payload(room_id), room=room_id)
+
+
+@socketio.on("set_coop_difficulty")
+def handle_set_coop_difficulty(data):
+    room_id = (data.get("room") or "").strip().upper()
+    diff = (data.get("difficulty") or "").strip().lower()
+
+    if room_id not in rooms:
+        return
+    r = rooms[room_id]
+    if request.sid != r["host_sid"]:
+        return
+    if diff not in COOP_TIME_LIMITS:
+        return
+    if r["started"]:
+        return
+
+    r["coop_difficulty"] = diff
+    r["firewall_max"] = COOP_FIREWALL_HP.get(diff, COOP_FIREWALL_HP["easy"])
+    r["firewall_hp"] = r["firewall_max"]
+    socketio.emit("coop_difficulty_updated", {"difficulty": diff}, room=room_id)
+    socketio.emit("lobby_state", lobby_payload(room_id), room=room_id)
+
+
 @socketio.on("start_game")
 def start_game(data):
     room_id = (data.get("room") or "").strip().upper()
@@ -303,10 +386,14 @@ def start_game(data):
     r["recent_words"] = []
     r["match_start_ts"] = time.time()
 
-    # reset scores + hp
+    # reset scores + hp + firewall
     for sid in list(r["players"].keys()):
         r["scores"][sid] = 0
         r["hp"][sid] = MAX_HP
+    if r["game_type"] == "coop":
+        diff = r["coop_difficulty"]
+        r["firewall_max"] = COOP_FIREWALL_HP.get(diff, COOP_FIREWALL_HP["easy"])
+        r["firewall_hp"] = r["firewall_max"]
 
     socketio.emit("game_started", {"round_total": r["round_total"], "mode": r["mode"]}, room=room_id)
     emit_state(room_id)
@@ -334,19 +421,45 @@ def handle_input(data):
         # point au winner
         r["scores"][request.sid] = r["scores"].get(request.sid, 0) + 1
 
-        # dégâts aux autres
+        if r["game_type"] == "coop":
+            r["firewall_hp"] = max(0, r["firewall_hp"] - COOP_FIREWALL_DAMAGE)
+            winner_name = r["players"].get(request.sid, "Unknown")
+            elapsed_ms = int((time.time() - r["round_start_ts"]) * 1000)
+
+            socketio.emit("round_winner", {
+                "player": winner_name,
+                "ms": elapsed_ms,
+                "word": r["current_word"],
+                "damage": COOP_FIREWALL_DAMAGE
+            }, room=room_id)
+
+            emit_state(room_id)
+            socketio.start_background_task(_delayed_next_round, room_id, 0.7)
+            return
+
+        # dégâts aux autres (plus rapide = plus de dégâts)
+        time_limit_s = get_time_limit(r)
+        elapsed_ms = int((time.time() - r["round_start_ts"]) * 1000)
+        ratio = 0.0
+        if time_limit_s > 0:
+            ratio = max(0.0, min(1.0, 1.0 - (elapsed_ms / (time_limit_s * 1000.0))))
+        bonus = int(round(DAMAGE_SPEED_BONUS_MAX * ratio))
+        win_damage = DAMAGE_ON_WIN + bonus
+
         for sid in r["players"].keys():
             if sid != request.sid:
-                r["hp"][sid] = max(0, r["hp"].get(sid, MAX_HP) - DAMAGE_ON_WIN)
+                r["hp"][sid] = max(0, r["hp"].get(sid, MAX_HP) - win_damage)
+
+        # soin du gagnant uniquement en easy
+        if r["mode"] == "easy" and HEAL_ON_WIN_EASY > 0:
+            r["hp"][request.sid] = min(MAX_HP, r["hp"].get(request.sid, MAX_HP) + HEAL_ON_WIN_EASY)
 
         winner_name = r["players"].get(request.sid, "Unknown")
-        elapsed_ms = int((time.time() - r["round_start_ts"]) * 1000)
-
         socketio.emit("round_winner", {
             "player": winner_name,
             "ms": elapsed_ms,
             "word": r["current_word"],
-            "damage": DAMAGE_ON_WIN
+            "damage": win_damage
         }, room=room_id)
 
         emit_state(room_id)
@@ -354,9 +467,10 @@ def handle_input(data):
 
     else:
         # erreur -> auto dégâts anti-bourrin
-        r["hp"][request.sid] = max(0, r["hp"].get(request.sid, MAX_HP) - DAMAGE_ON_WRONG)
-        emit("wrong", {"damage": DAMAGE_ON_WRONG, "hp": r["hp"][request.sid]})
-        emit_state(room_id)
+        if r["game_type"] == "pvp":
+            r["hp"][request.sid] = max(0, r["hp"].get(request.sid, MAX_HP) - DAMAGE_ON_WRONG)
+            emit("wrong", {"damage": DAMAGE_ON_WRONG, "hp": r["hp"][request.sid]})
+            emit_state(room_id)
 
 
 @socketio.on("disconnect")

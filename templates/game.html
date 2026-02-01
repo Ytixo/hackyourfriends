@@ -202,6 +202,7 @@
       <div class="pill">Salon 🔐: <strong id="roomCode">{{ room_id }}</strong></div>
       <div class="pill">⏱️ Round: <strong id="timer">0</strong>s</div>
       <div class="pill">⏳ Match: <strong id="matchTimer">0.0</strong>s</div>
+      <div class="pill small" id="spectatorBadge" style="display:none;">👁️ Spectateur</div>
       <div class="pill small">Lien: <a id="roomLink" href="#" target="_blank" rel="noopener"></a></div>
       <div class="pill small">🔊 <button class="btn" id="soundBtn" style="padding:6px 10px;">ON</button></div>
     </div>
@@ -218,8 +219,18 @@
           <div class="timerBar" id="timerBar"><div class="timerFill" id="timerFill"></div></div>
         </div>
 
-        <div class="small" style="margin-top:12px;">Vie (HP) ❤️</div>
-        <div id="hpList"></div>
+        <div id="hpWrap">
+          <div class="small" style="margin-top:12px;">Vie (HP) ❤️</div>
+          <div id="hpList"></div>
+        </div>
+
+        <div id="firewallWrap" style="display:none; margin-top:12px;">
+          <div class="small">Pare-feu 🔥</div>
+          <div class="hpBar" style="margin-top:6px;">
+            <div class="hpFill" id="firewallFill"></div>
+          </div>
+          <div class="small" id="firewallText" style="margin-top:6px; opacity:.9;"></div>
+        </div>
 
         <h3 id="line"><span id="typed"></span><span id="cursor">█</span></h3>
 
@@ -240,6 +251,26 @@
         <hr style="border:0;border-top:1px solid rgba(0,255,102,.25); margin:14px 0;">
 
         <div class="small">Paramètres (hôte)</div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:8px;">
+          <select id="gameTypeSelect">
+            <option value="pvp">PVP (chacun pour soi)</option>
+            <option value="coop">COOP vs IA (pare-feu)</option>
+          </select>
+          <button class="btn" id="setGameTypeBtn">Appliquer</button>
+        </div>
+
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:8px;">
+          <select id="coopDifficultySelect">
+            <option value="easy">Facile</option>
+            <option value="medium">Moyen</option>
+            <option value="hard">Difficile</option>
+            <option value="impossible">Impossible</option>
+          </select>
+          <button class="btn" id="setCoopDifficultyBtn">Appliquer</button>
+        </div>
+
+        <div class="small" style="margin-top:6px; opacity:.85;">(le temps par mot et la vie du pare-feu changent)</div>
+
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:8px;">
           <select id="modeSelect">
             <option value="easy">Easy (mot visible)</option>
