@@ -73,20 +73,6 @@
     appWrap.classList.add("shake");
   }
 
-  // ---------- overlay ----------
-  function showOverlay(title, sub, ms = 1200) {
-    if (!overlay) return;
-    overlayTitle.textContent = title;
-    overlayTitle.setAttribute("data-text", title);
-    overlaySub.textContent = sub || "";
-    overlay.classList.add("show");
-
-    if (ms > 0) {
-      setTimeout(() => overlay.classList.remove("show"), ms);
-    }
-  }
-  overlayClose?.addEventListener("click", () => overlay?.classList.remove("show"));
-
   // ---------- typewriter ----------
   let typeTimer = null;
   function typewrite(text, cps = 85) {
