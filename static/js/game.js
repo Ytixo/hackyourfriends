@@ -73,6 +73,11 @@
     inputEl.value = "";
   }
 
+  function formatRoundTotal(total) {
+    const t = Number(total);
+    return Number.isFinite(t) && t > 0 ? String(t) : "∞";
+  }
+
   function setCoopUI(on) {
     if (firewallWrap) firewallWrap.style.display = on ? "flex" : "none";
     if (modeSelect) modeSelect.disabled = on;
@@ -426,7 +431,8 @@
 
     // NOTE: on attend surtout round_start pour avoir match_start_ts serveur
     flashStatus("▶ Partie lancée !", 1200);
-    logPush(`Partie lancée (${data?.round_total || 30} mots) en ${currentMode.toUpperCase()}`);
+    const totalLabel = formatRoundTotal(data?.round_total);
+    logPush(`Partie lancée (${totalLabel} mots) en ${currentMode.toUpperCase()}`);
     if (startBtn) startBtn.style.display = "none";
     beep("win");
   });
@@ -454,7 +460,7 @@
     if (gameTypeSelect) gameTypeSelect.value = gameType;
     setCoopUI(gameType === "coop");
 
-    roundInfoEl.textContent = `Mot ${idx}/${total} ⚡`;
+    roundInfoEl.textContent = `Mot ${idx}/${formatRoundTotal(total)} ⚡`;
     inputEl.value = "";
     inputEl.focus();
 

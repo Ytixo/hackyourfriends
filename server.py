@@ -34,7 +34,7 @@ rooms = {}
 
 DEFAULT_TIME_LIMIT = 7         # temps max par mot/round
 DEFAULT_TIME_LIMIT_HARD = 3
-ROUNDS_TOTAL = 30
+ROUNDS_TOTAL = 0  # 0 = illimité
 
 MAX_HP = 100
 DAMAGE_ON_WIN = 5              # dégâts de base à tous les autres quand quelqu’un gagne un round
@@ -193,8 +193,8 @@ def start_new_round(room_id: str):
     if r["round_active"]:
         return
 
-    # fin si 30 mots
-    if r["round_index"] >= r["round_total"]:
+    # fin si limite de mots activée
+    if r["round_total"] > 0 and r["round_index"] >= r["round_total"]:
         end_game(room_id)
         return
 
