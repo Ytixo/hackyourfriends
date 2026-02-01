@@ -9,24 +9,34 @@ function makeRandomName() {
 
 function getUsername() {
   const val = (usernameInput?.value || "").trim();
-  const name = val || makeRandomName();
+  if (val) {
+    localStorage.setItem("hyf_username", val);
+    return val;
+  }
+  const stored = (localStorage.getItem("hyf_username") || "").trim();
+  if (stored) return stored;
+  const name = makeRandomName();
   localStorage.setItem("hyf_username", name);
   return name;
 }
 
 const storedName = (localStorage.getItem("hyf_username") || "").trim();
 if (usernameInput && storedName) usernameInput.value = storedName;
+usernameInput?.addEventListener("input", () => {
+  const val = (usernameInput.value || "").trim();
+  if (val) localStorage.setItem("hyf_username", val);
+});
 
 createBtn.addEventListener("click", () => {
-    getUsername();
-    window.location.href = "/create";
+    const name = getUsername();
+    window.location.href = `/create?name=${encodeURIComponent(name)}`;
 });
 
 joinBtn.addEventListener("click", () => {
-    getUsername();
+    const name = getUsername();
     const code = (roomInput.value || "").trim().toUpperCase();
     if (!code) return;
-    window.location.href = `/room/${code}`;
+    window.location.href = `/room/${code}?name=${encodeURIComponent(name)}`;
 });
 
 roomInput.addEventListener("keydown", (e) => {
@@ -149,6 +159,11 @@ async function loadRooms() {
 
         const a = document.createElement("a");
         a.href = `/room/${encodeURIComponent(code)}`;
+        a.addEventListener("click", (e) => {
+          e.preventDefault();
+          const name = getUsername();
+          window.location.href = `/room/${encodeURIComponent(code)}?name=${encodeURIComponent(name)}`;
+        });
         a.textContent = `${code} (${r.players}) ${r.started ? "• en cours" : "• lobby"} • ${r.mode}`;
         a.style.cssText = `
             padding:10px 12px;

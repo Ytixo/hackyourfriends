@@ -2,6 +2,7 @@ import os
 import random
 import string
 import time
+from urllib.parse import quote
 
 from flask import Flask, render_template, redirect, request, jsonify
 from flask_socketio import SocketIO, emit, join_room as socket_join_room
@@ -588,6 +589,9 @@ def api_rooms():
 def create():
     room_id = generate_room_code()
     ensure_room(room_id)
+    name = (request.args.get("name") or "").strip()
+    if name:
+        return redirect(f"/room/{room_id}?name={quote(name)}")
     return redirect(f"/room/{room_id}")
 
 

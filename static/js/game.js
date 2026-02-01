@@ -1,9 +1,15 @@
 (() => {
   const socket = io();
   const room = (window.GAME_ROOM || "").trim().toUpperCase();
+  const params = new URLSearchParams(window.location.search);
+  const paramName = (params.get("name") || "").trim();
   const storedName = (localStorage.getItem("hyf_username") || "").trim();
-  const username = storedName || `player${Math.floor(10000 + Math.random() * 90000)}`;
-  if (!storedName) localStorage.setItem("hyf_username", username);
+  const username = paramName || storedName || `player${Math.floor(10000 + Math.random() * 90000)}`;
+  if (paramName) {
+    localStorage.setItem("hyf_username", paramName);
+  } else if (!storedName) {
+    localStorage.setItem("hyf_username", username);
+  }
 
   const appWrap = document.getElementById("appWrap");
 
