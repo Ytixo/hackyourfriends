@@ -29,11 +29,6 @@
   const timerBar = document.getElementById("timerBar");
   const timerFill = document.getElementById("timerFill");
 
-  const overlay = document.getElementById("overlay");
-  const overlayTitle = document.getElementById("overlayTitle");
-  const overlaySub = document.getElementById("overlaySub");
-  const overlayClose = document.getElementById("overlayClose");
-
   const soundBtn = document.getElementById("soundBtn");
 
   let gameStarted = false;
@@ -415,7 +410,6 @@
   socket.on("round_timeout", () => {
     flashStatus("⏱️ Trop tard !", 900);
     logPush("⏱️ Timeout");
-    showOverlay("TIMEOUT", "Vous êtes trop lent…", 900);
     beep("timeout");
     shake();
   });
@@ -427,7 +421,6 @@
 
     flashStatus(`🏆 ${winner} (${ms}ms) -${dmg}HP`, 1700);
     hackBurst(winner, ms);
-    showOverlay("ACCESS GRANTED", `${winner} a hack en ${ms}ms • -${dmg}HP`, 1100);
     beep("win");
     shake();
   });
@@ -460,9 +453,10 @@
 
     const top = (data?.players ?? [])[0];
     if (top) {
-      showOverlay("SESSION CLOSED", `Gagnant: ${top.name} • ${top.score} pts • ${top.hp} HP • ${totalS}s`, 2200);
+        flashStatus(`🏆 ${top.name} gagne la partie !`, 2500);
+        logPush(`🏁 Fin — Gagnant: ${top.name} (${top.score} pts, ${top.hp}HP)`);
     } else {
-      showOverlay("SESSION CLOSED", `Temps: ${totalS}s`, 1800);
+        flashStatus(`🏁 Partie terminée`, 2000);
     }
 
     if (startBtn) startBtn.style.display = isHost ? "inline-block" : "none";
