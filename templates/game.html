@@ -154,6 +154,21 @@
       overflow:auto;
       font-size:.92rem;
     }
+    .chatBox{
+      margin-top:10px;
+      border:1px solid rgba(0,255,102,.25);
+      border-radius:12px;
+      background:rgba(0,0,0,.35);
+      min-height:160px;
+      max-height:220px;
+      padding:8px 10px;
+      overflow:auto;
+      font-size:.92rem;
+    }
+    .chatMsg{margin:4px 0; line-height:1.3}
+    .chatName{color:var(--neon)}
+    .chatRow{display:flex; gap:8px; margin-top:10px}
+    .chatRow input{flex:1}
 
     select{
       background:rgba(0,0,0,.55);
@@ -293,6 +308,15 @@
       <div class="panel">
         <div class="small">Scores 🏆</div>
         <ul id="scores"></ul>
+
+        <hr style="border:0;border-top:1px solid rgba(0,255,102,.25); margin:14px 0;">
+
+        <div class="small">Chat 💬</div>
+        <div id="chatBox" class="chatBox"></div>
+        <div class="chatRow">
+          <input id="chatInput" placeholder="Écris un message…" maxlength="200" />
+          <button class="btn" id="chatSendBtn">Envoyer</button>
+        </div>
 
         <hr style="border:0;border-top:1px solid rgba(0,255,102,.25); margin:14px 0;">
 

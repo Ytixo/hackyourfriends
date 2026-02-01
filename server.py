@@ -110,6 +110,7 @@ def ensure_room(room_id: str):
             "firewall_hp": 0,
             "firewall_max": 0,
             "coop_fail_streak": 0,
+            "chat": [],
         }
 
 def get_time_limit(r):
@@ -331,6 +332,8 @@ def handle_join(data):
         "firewall_hp": r["firewall_hp"],
         "firewall_max": r["firewall_max"],
     })
+
+    emit("chat_history", {"messages": r["chat"]})
 
 
     socketio.emit("lobby_state", lobby_payload(room_id), room=room_id)
@@ -566,6 +569,30 @@ def handle_disconnect():
 
     for room_id in empty:
         rooms.pop(room_id, None)
+
+
+@socketio.on("chat_message")
+def handle_chat_message(data):
+    room_id = (data.get("room") or "").strip().upper()
+    text = (data.get("text") or "").strip()
+
+    if room_id not in rooms:
+        return
+    if not text:
+        return
+
+    r = rooms[room_id]
+    username = r["players"].get(request.sid)
+    if not username:
+        return
+
+    text = text[:200]
+    msg = {"name": username, "text": text, "ts": int(time.time())}
+    r["chat"].append(msg)
+    if len(r["chat"]) > 100:
+        r["chat"] = r["chat"][-100:]
+
+    socketio.emit("chat_message", msg, room=room_id)
 
 
 @app.get("/api/rooms")

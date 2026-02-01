@@ -32,6 +32,9 @@
 
   const roomLinkEl = document.getElementById("roomLink");
   const startBtn = document.getElementById("startBtn");
+  const chatBox = document.getElementById("chatBox");
+  const chatInput = document.getElementById("chatInput");
+  const chatSendBtn = document.getElementById("chatSendBtn");
 
   const timeLimitInput = document.getElementById("timeLimitInput");
   const setTimeBtn = document.getElementById("setTimeBtn");
@@ -77,6 +80,17 @@
     inputEl.disabled = on;
     inputEl.placeholder = on ? "En attente du lancement..." : "Écris puis Entrée";
     inputEl.value = "";
+  }
+
+  function addChatMessage(msg) {
+    if (!chatBox) return;
+    const name = msg?.name || "Player";
+    const text = msg?.text || "";
+    const line = document.createElement("div");
+    line.className = "chatMsg";
+    line.innerHTML = `<span class="chatName">${escapeHtml(name)}</span>: ${escapeHtml(text)}`;
+    chatBox.appendChild(line);
+    chatBox.scrollTop = chatBox.scrollHeight;
   }
 
   function formatRoundTotal(total) {
@@ -340,6 +354,30 @@
     flashStatus(`Connecté ✅ (${username})`, 1000);
     logPush(`Connecté au salon ${room}`);
     inputEl.focus();
+  });
+
+  socket.on("chat_history", (data) => {
+    if (!chatBox) return;
+    chatBox.innerHTML = "";
+    const msgs = data?.messages ?? [];
+    msgs.forEach(addChatMessage);
+  });
+
+  socket.on("chat_message", (msg) => {
+    addChatMessage(msg);
+  });
+
+  function sendChat() {
+    if (!chatInput) return;
+    const text = (chatInput.value || "").trim();
+    if (!text) return;
+    socket.emit("chat_message", { room, text });
+    chatInput.value = "";
+  }
+
+  chatSendBtn?.addEventListener("click", sendChat);
+  chatInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") sendChat();
   });
 
   // set time limit
