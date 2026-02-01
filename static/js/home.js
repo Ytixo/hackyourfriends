@@ -1,12 +1,29 @@
 const createBtn = document.getElementById("createBtn");
 const joinBtn = document.getElementById("joinBtn");
 const roomInput = document.getElementById("roomInput");
+const usernameInput = document.getElementById("usernameInput");
+
+function makeRandomName() {
+  return `player${Math.floor(10000 + Math.random() * 90000)}`;
+}
+
+function getUsername() {
+  const val = (usernameInput?.value || "").trim();
+  const name = val || makeRandomName();
+  localStorage.setItem("hyf_username", name);
+  return name;
+}
+
+const storedName = (localStorage.getItem("hyf_username") || "").trim();
+if (usernameInput && storedName) usernameInput.value = storedName;
 
 createBtn.addEventListener("click", () => {
+    getUsername();
     window.location.href = "/create";
 });
 
 joinBtn.addEventListener("click", () => {
+    getUsername();
     const code = (roomInput.value || "").trim().toUpperCase();
     if (!code) return;
     window.location.href = `/room/${code}`;

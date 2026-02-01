@@ -38,6 +38,12 @@
       box-shadow: var(--shadow);
     }
     .pill strong{color:var(--neon)}
+    #roomLink{
+      color:var(--neon);
+      text-decoration:none;
+      border-bottom:1px dashed rgba(0,255,102,.45);
+    }
+    #roomLink:hover{opacity:.9}
     .row{display:flex;gap:16px;margin-top:14px;flex-wrap:wrap;align-items:flex-start}
     .panel{
       flex:1;min-width:300px;
@@ -196,7 +202,7 @@
       <div class="pill">Salon 🔐: <strong id="roomCode">{{ room_id }}</strong></div>
       <div class="pill">⏱️ Round: <strong id="timer">0</strong>s</div>
       <div class="pill">⏳ Match: <strong id="matchTimer">0.0</strong>s</div>
-      <div class="pill small">Lien: <span id="roomLink"></span></div>
+      <div class="pill small">Lien: <a id="roomLink" href="#" target="_blank" rel="noopener"></a></div>
       <div class="pill small">🔊 <button class="btn" id="soundBtn" style="padding:6px 10px;">ON</button></div>
     </div>
 
@@ -222,7 +228,6 @@
 
         <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
           <button class="btn" id="startBtn" style="display:none;">▶ Lancer la partie</button>
-          <button class="btn" id="copyBtn">Copier lien 📋</button>
         </div>
 
         <pre id="log" class="log"></pre>

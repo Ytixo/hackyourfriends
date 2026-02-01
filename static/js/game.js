@@ -1,7 +1,9 @@
 (() => {
   const socket = io();
   const room = (window.GAME_ROOM || "").trim().toUpperCase();
-  const username = (prompt("Pseudo ?") || "Player").trim() || "Player";
+  const storedName = (localStorage.getItem("hyf_username") || "").trim();
+  const username = storedName || `player${Math.floor(10000 + Math.random() * 90000)}`;
+  if (!storedName) localStorage.setItem("hyf_username", username);
 
   const appWrap = document.getElementById("appWrap");
 
@@ -18,7 +20,6 @@
   const logEl = document.getElementById("log");
 
   const roomLinkEl = document.getElementById("roomLink");
-  const copyBtn = document.getElementById("copyBtn");
   const startBtn = document.getElementById("startBtn");
 
   const timeLimitInput = document.getElementById("timeLimitInput");
@@ -39,11 +40,7 @@
   // ---------- small helpers ----------
   const link = `${window.location.origin}/room/${room}`;
   roomLinkEl.textContent = link;
-
-  copyBtn?.addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText(link); flashStatus("Lien copié 📋", 1200); }
-    catch { flashStatus("Copie impossible 😅", 1500); }
-  });
+  if (roomLinkEl) roomLinkEl.href = link;
 
   function flashStatus(msg, ms = 1200) {
     if (!statusEl) return;
