@@ -21,7 +21,7 @@
   const copyBtn = document.getElementById("copyBtn");
   const startBtn = document.getElementById("startBtn");
 
-  const timeLimitInput = document.getElementById("timeLimitInput");
+  const timeLimitSelect = document.getElementById("timeLimitSelect");
   const setTimeBtn = document.getElementById("setTimeBtn");
   const modeSelect = document.getElementById("modeSelect");
   const setModeBtn = document.getElementById("setModeBtn");
@@ -280,8 +280,9 @@
     }
 
     if (setTimeBtn) setTimeBtn.disabled = !isHost;
-    if (timeLimitInput && data?.time_limit) timeLimitInput.value = data.time_limit;
-
+    if (timeLimitSelect && typeof data?.time_limit === "number") {
+        timeLimitSelect.value = String(data.time_limit);
+    }
     if (setModeBtn) setModeBtn.disabled = !isHost;
     if (modeSelect) modeSelect.value = currentMode;
 
@@ -290,6 +291,12 @@
     flashStatus(`Connecté ✅ (${username})`, 1000);
     logPush(`Connecté au salon ${room}`);
     inputEl.focus();
+
+    setTimeBtn?.addEventListener("click", () => {
+    const val = Number(timeLimitSelect?.value);
+    if (!Number.isFinite(val)) return;
+        socket.emit("set_time_limit", { room, seconds: val });
+    });
   });
 
   // set time limit
@@ -312,12 +319,23 @@
     socket.emit("set_mode", { room, mode });
   });
   socket.on("mode_updated", (data) => {
-    currentMode = data?.mode || "easy";
-    flashStatus(`Mode: ${currentMode.toUpperCase()}`, 1200);
-    logPush(`Mode: ${currentMode}`);
-    applyMode(currentMode, 0);
-    beep("ok");
-  });
+  currentMode = (data?.mode || "easy");
+  if (modeSelect) modeSelect.value = currentMode;
+
+  // met à jour le temps affiché selon le mode
+  if (timeLimitSelect && typeof data?.time_limit === "number") {
+    timeLimitSelect.value = String(data.time_limit);
+ }
+ setTimeBtn?.addEventListener("click", () => {
+  const val = Number(timeLimitSelect?.value);
+  if (!Number.isFinite(val)) return;
+    socket.emit("set_time_limit", { room, seconds: val });
+ });
+
+  flashStatus(`Mode: ${currentMode.toUpperCase()}`, 1200);
+  logPush(`Mode réglé: ${currentMode}`);
+  applyMode(currentMode, 0);
+});
 
   // lobby
   socket.on("lobby_state", (data) => {
@@ -343,7 +361,18 @@
       if (setTimeBtn) setTimeBtn.disabled = !isHost;
       if (setModeBtn) setModeBtn.disabled = !isHost;
 
-      applyMode("easy", 0);
+      applyMode("easy", 0)
+      
+      if (typeof data?.time_limit === "number" && timeLimitInput) {
+        timeLimitInput.value = data.time_limit;
+        }
+        if (modeSelect) modeSelect.value = data?.mode || currentMode;
+
+      setTimeBtn?.addEventListener("click", () => {
+      const val = Number(timeLimitSelect?.value);
+      if (!Number.isFinite(val)) return;
+        socket.emit("set_time_limit", { room, seconds: val });
+      });
     }
   });
 

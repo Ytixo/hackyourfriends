@@ -259,10 +259,9 @@ def handle_set_time_limit(data):
     else:
         r["time_limit_hard"] = seconds
 
-    socketio.emit("time_limit_updated", {"seconds": seconds, "mode": r["mode"]}, room=room_id)
+    r["mode"] = mode
+    socketio.emit("mode_updated", {"mode": mode, "time_limit": get_time_limit(r)}, room=room_id)
     socketio.emit("lobby_state", lobby_payload(room_id), room=room_id)
-
-
 
 @socketio.on("set_mode")
 def handle_set_mode(data):

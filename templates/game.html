@@ -244,8 +244,26 @@
         </div>
 
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:8px;">
-          <input id="timeLimitInput" type="number" min="3" max="30" value="7" style="max-width:140px" />
-          <button class="btn" id="setTimeBtn">Appliquer</button>
+          <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:8px;">
+            <select id="timeLimitSelect">
+                <option value="3">3s</option>
+                <option value="4">4s</option>
+                <option value="5">5s</option>
+                <option value="6">6s</option>
+                <option value="7" selected>7s</option>
+                <option value="8">8s</option>
+                <option value="9">9s</option>
+                <option value="10">10s</option>
+                <option value="12">12s</option>
+                <option value="15">15s</option>
+                <option value="20">20s</option>
+                <option value="25">25s</option>
+                <option value="30">30s</option>
+            </select>
+            <button class="btn" id="setTimeBtn">Appliquer</button>
+            </div>
+        <div class="small" style="margin-top:8px;">(temps par round, selon le mode)</div>
+            <button class="btn" id="setTimeBtn">Appliquer</button>
         </div>
         <div class="small" style="margin-top:8px;">(3 à 30 secondes)</div>
       </div>
