@@ -15,7 +15,7 @@ mots_cles = [
     "for", "while", "if", "else", "print", "input",
     "list", "dict", "len", "range", "import", "def",
     "try", "except", "return", "class", "lambda", "with",
-    "break", "continue", "yield", "global", "assert", "test"
+    "break", "continue", "yield", "global", "assert", "test",
     "from", "document", "int", "elif", "score++", "True", "False"
 ]
 
