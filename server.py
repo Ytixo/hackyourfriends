@@ -12,12 +12,26 @@ app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
 mots_cles = [
-    "for", "while", "if", "else", "print", "input",
-    "list", "dict", "len", "range", "import", "def",
-    "try", "except", "return", "class", "lambda", "with",
-    "break", "continue", "yield", "global", "assert", "test",
-    "from", "document", "int", "elif", "score++", "True", "False"
+    "for", "while", "if", "else", "elif",
+    "print", "input",
+    "list", "dict", "set", "tuple",
+    "len", "range", "enumerate", "zip",
+    "import", "from", "as",
+    "def", "return", "lambda",
+    "try", "except", "finally", "raise",
+    "class", "self", "__init__",
+    "with", "as",
+    "break", "continue", "pass",
+    "yield",
+    "global", "nonlocal",
+    "assert",
+    "True", "False", "None",
+    "int", "float", "str", "bool",
+    "open", "read", "write",
+    "map", "filter", "sum", "min", "max",
+    "is", "in", "not", "and", "or"
 ]
+
 
 lignes_code = [
     "for i in range(len(ip_addresses)):",
@@ -105,6 +119,7 @@ def ensure_room(room_id: str):
             "current_line": "",
             "round_token": "",
             "round_start_ts": 0.0,
+            "round_validated": set(),
 
             "match_start_ts": 0.0,
             "recent_words": [],  # anti-repeat
@@ -225,6 +240,7 @@ def start_new_round(room_id: str):
     r["round_active"] = True
     r["round_token"] = generate_room_code(10)
     r["round_start_ts"] = time.time()
+    r["round_validated"] = set()
 
     seconds = get_time_limit(r)
 
@@ -484,10 +500,17 @@ def handle_input(data):
     if r["hp"].get(request.sid, MAX_HP) <= 0:
         return
 
-    if text == r["current_word"]:
-        r["round_active"] = False
+    # en pvp, si deja valide ce round, on ignore
+    if r["game_type"] == "pvp" and request.sid in r.get("round_validated", set()):
+        return
 
+    if text == r["current_word"]:
         # point au winner
+        if r["game_type"] == "pvp":
+            r.setdefault("round_validated", set()).add(request.sid)
+        else:
+            r["round_active"] = False
+
         r["scores"][request.sid] = r["scores"].get(request.sid, 0) + 1
 
         if r["game_type"] == "coop":
@@ -517,8 +540,13 @@ def handle_input(data):
         win_damage = DAMAGE_ON_WIN + bonus
 
         for sid in r["players"].keys():
-            if sid != request.sid:
-                r["hp"][sid] = max(0, r["hp"].get(sid, MAX_HP) - win_damage)
+            if sid == request.sid:
+                continue
+            if sid in r["round_validated"]:
+                continue
+            if r["hp"].get(sid, MAX_HP) <= 0:
+                continue
+            r["hp"][sid] = max(0, r["hp"].get(sid, MAX_HP) - win_damage)
 
         # soin du gagnant uniquement en easy
         if r["mode"] == "easy" and HEAL_ON_WIN_EASY > 0:
@@ -533,7 +561,10 @@ def handle_input(data):
         }, room=room_id)
 
         emit_state(room_id)
-        socketio.start_background_task(_delayed_next_round, room_id, 0.7)
+        alive = [sid for sid in r["players"] if r["hp"].get(sid, MAX_HP) > 0]
+        if alive and all(sid in r["round_validated"] for sid in alive):
+            r["round_active"] = False
+            socketio.start_background_task(_delayed_next_round, room_id, 0.7)
 
     else:
         # erreur -> auto dégâts anti-bourrin
