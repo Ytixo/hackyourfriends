@@ -29,6 +29,11 @@
   const firewallFill = document.getElementById("firewallFill");
   const firewallText = document.getElementById("firewallText");
   const damageFlash = document.getElementById("damageFlash");
+  const endOverlay = document.getElementById("endOverlay");
+  const endTitle = document.getElementById("endTitle");
+  const endSubtitle = document.getElementById("endSubtitle");
+  const endMeta = document.getElementById("endMeta");
+  const endCloseBtn = document.getElementById("endCloseBtn");
 
   const roomLinkEl = document.getElementById("roomLink");
   const startBtn = document.getElementById("startBtn");
@@ -56,6 +61,8 @@
   let gameType = "pvp";
   let coopDifficulty = "easy";
   let matchStartTs = 0; // unix seconds (server)
+  let lastFirewallHp = 0;
+  let lastFirewallMax = 0;
 
   // ---------- small helpers ----------
   const link = `${window.location.origin}/room/${room}`;
@@ -68,6 +75,24 @@
     if (ms > 0) setTimeout(() => {
       if (statusEl.textContent === msg) statusEl.textContent = "";
     }, ms);
+  }
+
+  function showEndOverlay({ title, subtitle, meta }) {
+    if (!endOverlay) return;
+    if (endTitle) {
+      endTitle.textContent = title || "FIN DE PARTIE";
+      endTitle.setAttribute("data-text", title || "FIN DE PARTIE");
+    }
+    if (endSubtitle) endSubtitle.textContent = subtitle || "";
+    if (endMeta) endMeta.textContent = meta || "";
+    endOverlay.classList.add("show");
+    endOverlay.setAttribute("aria-hidden", "false");
+  }
+
+  function hideEndOverlay() {
+    if (!endOverlay) return;
+    endOverlay.classList.remove("show");
+    endOverlay.setAttribute("aria-hidden", "true");
   }
 
   function logPush(text) {
@@ -109,11 +134,15 @@
   }
 
   function renderFirewall(hp, max) {
+    const maxVal = Number(max) || 0;
+    const hpVal = Number(hp) || 0;
+    lastFirewallHp = hpVal;
+    lastFirewallMax = maxVal;
     if (!firewallFill || !firewallText) return;
-    const m = Math.max(1, Number(max) || 0);
-    const h = Math.max(0, Math.min(m, Number(hp) || 0));
+    const m = Math.max(1, maxVal);
+    const h = Math.max(0, Math.min(m, hpVal));
     firewallFill.style.width = `${(h / m) * 100}%`;
-    firewallText.textContent = `PARE-FEU — ${h} / ${m}`;
+    firewallText.textContent = `PARE-FEU - ${h} / ${m}`;
   }
 
   function flashDamage() {
@@ -321,6 +350,11 @@
     if (soundOn) beep("ok");
   });
 
+  endCloseBtn?.addEventListener("click", hideEndOverlay);
+  endOverlay?.addEventListener("click", (e) => {
+    if (e.target === endOverlay) hideEndOverlay();
+  });
+
   // unlock audio on first interaction
   window.addEventListener("pointerdown", () => { if (soundOn) ensureAudio(); }, { once: true });
 
@@ -469,6 +503,7 @@
   socket.on("game_started", (data) => {
     gameStarted = true;
     setLobbyMode(false);
+    hideEndOverlay();
 
     currentMode = data?.mode || currentMode;
     applyMode(currentMode, 0);
@@ -485,6 +520,7 @@
   socket.on("round_start", (data) => {
     gameStarted = true;
     setLobbyMode(false);
+    hideEndOverlay();
 
     const line = data?.line ?? "";
     const word = data?.word ?? "";
@@ -593,15 +629,32 @@
     const totalMs = data?.total_ms ?? 0;
     const totalS = (totalMs / 1000).toFixed(2);
 
-    flashStatus(`✅ Terminé en ${totalS}s`, 2500);
-    logPush(`🏁 Fin de partie (${totalS}s)`);
+    flashStatus(`Termine en ${totalS}s`, 2500);
+    logPush(`Fin de partie (${totalS}s)`);
 
-    const top = (data?.players ?? [])[0];
+    const players = data?.players ?? [];
+    const top = players[0];
+    const alive = players.filter(p => Number(p.hp) > 0);
+    const lastAlive = alive.length === 1 ? alive[0] : top;
     if (top) {
-        flashStatus(`🏆 ${top.name} gagne la partie !`, 2500);
-        logPush(`🏁 Fin — Gagnant: ${top.name} (${top.score} pts, ${top.hp}HP)`);
+      flashStatus(`${top.name} gagne la partie !`, 2500);
+      logPush(`Fin - Gagnant: ${top.name} (${top.score} pts, ${top.hp}HP)`);
     } else {
-        flashStatus(`🏁 Partie terminée`, 2000);
+      flashStatus(`Partie terminee`, 2000);
+    }
+
+    if (gameType === "coop") {
+      const coopVictory = lastFirewallMax > 0 && lastFirewallHp <= 0;
+      const coopDefeat = alive.length === 0 && players.length > 0;
+      const title = coopVictory ? "VICTOIRE COOP" : (coopDefeat ? "ECHEC COOP" : "FIN COOP");
+      const subtitle = coopVictory ? "Pare-feu detruit" : (coopDefeat ? "Tous les joueurs sont KO" : "Partie terminee");
+      const meta = totalMs > 0 ? `Temps total: ${totalS}s` : "";
+      showEndOverlay({ title, subtitle, meta });
+    } else {
+      const title = "VICTOIRE PVP";
+      const subtitle = lastAlive ? `Dernier en vie: ${lastAlive.name}` : (top ? `Gagnant: ${top.name}` : "Partie terminee");
+      const meta = totalMs > 0 ? `Temps total: ${totalS}s` : "";
+      showEndOverlay({ title, subtitle, meta });
     }
 
     if (startBtn) startBtn.style.display = isHost ? "inline-block" : "none";

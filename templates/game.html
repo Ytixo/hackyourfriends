@@ -268,6 +268,16 @@
 <body>
 
   <div id="damageFlash"></div>
+  <div id="endOverlay" class="overlay" aria-hidden="true">
+    <div class="overlayCard" role="dialog" aria-live="polite">
+      <div class="big glitch" id="endTitle" data-text="VICTOIRE">VICTOIRE</div>
+      <div class="sub" id="endSubtitle">...</div>
+      <div class="sub" id="endMeta"></div>
+      <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="btn" id="endCloseBtn">OK</button>
+      </div>
+    </div>
+  </div>
   <div class="wrap" id="appWrap">
     <div class="top">
       <div class="pill">Salon 🔐: <strong id="roomCode">{{ room_id }}</strong></div>
