@@ -16,6 +16,7 @@ mots_cles = [
     "list", "dict", "len", "range", "import", "def",
     "try", "except", "return", "class", "lambda", "with",
     "break", "continue", "yield", "global", "assert", "test"
+    "from", "document", "int", "elif", "score++", "True", "False"
 ]
 
 lignes_code = [
@@ -43,7 +44,7 @@ DAMAGE_SPEED_BONUS_MAX = 6     # bonus max si très rapide (ajouté au dégât d
 DAMAGE_ON_WRONG = 2            # dégâts sur erreur (anti-bourrin)
 HEAL_ON_WIN_EASY = 4           # soin accordé au gagnant en easy uniquement
 
-RECENT_WORD_WINDOW = 2         # le mot ne peut pas réapparaitre dans les 2 prochains rounds
+RECENT_WORD_WINDOW = 5         # le mot ne peut pas réapparaitre dans les 2 prochains rounds
 
 COOP_TIME_LIMITS = {
     "easy": 7,
