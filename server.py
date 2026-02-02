@@ -119,7 +119,6 @@ def ensure_room(room_id: str):
             "current_line": "",
             "round_token": "",
             "round_start_ts": 0.0,
-            "round_validated": set(),
 
             "match_start_ts": 0.0,
             "recent_words": [],  # anti-repeat
@@ -127,6 +126,12 @@ def ensure_room(room_id: str):
             "firewall_max": 0,
             "coop_fail_streak": 0,
             "chat": [],
+
+            "pvp_words": {},            # sid -> word
+            "pvp_lines": {},            # sid -> line
+            "pvp_round_index": {},      # sid -> index
+            "pvp_round_start_ts": {},   # sid -> ts
+            "pvp_round_token": {},      # sid -> token
         }
 
 def get_time_limit(r):
@@ -204,8 +209,89 @@ def choose_word_no_recent(r):
     return word
 
 
+def _delayed_next_pvp_round(room_id: str, sid: str, delay: float):
+    socketio.sleep(delay)
+    if room_id in rooms:
+        start_pvp_round_for_player(room_id, sid)
+
+
+def pvp_round_timer_task(room_id: str, sid: str, token: str, seconds: int):
+    socketio.sleep(seconds)
+    if room_id not in rooms:
+        return
+    r = rooms[room_id]
+    if r["game_type"] != "pvp" or not r["started"]:
+        return
+    if sid not in r["players"]:
+        return
+    if r["pvp_round_token"].get(sid) != token:
+        return
+    if r["hp"].get(sid, MAX_HP) <= 0:
+        return
+    socketio.emit("round_timeout", {}, to=sid)
+    socketio.start_background_task(_delayed_next_pvp_round, room_id, sid, 0.0)
+
+
+def start_pvp_round_for_player(room_id: str, sid: str, word: str = None, line: str = None):
+    r = rooms[room_id]
+    if not r["started"] or r["game_type"] != "pvp":
+        return
+    if sid not in r["players"]:
+        return
+    if r["hp"].get(sid, MAX_HP) <= 0:
+        return
+
+    r["pvp_round_index"][sid] = r["pvp_round_index"].get(sid, 0) + 1
+    if word is None:
+        word = choose_word_no_recent(r)
+    if line is None:
+        line = random.choice(lignes_code)
+    r["pvp_words"][sid] = word
+    r["pvp_lines"][sid] = line
+    token = generate_room_code(10)
+    r["pvp_round_token"][sid] = token
+    r["pvp_round_start_ts"][sid] = time.time()
+
+    seconds = get_time_limit(r)
+    reveal_ms = 500 if r["mode"] == "hard" else 999999
+
+    socketio.emit("round_start", {
+        "line": r["pvp_lines"][sid],
+        "word": r["pvp_words"][sid],
+        "round_index": r["pvp_round_index"][sid],
+        "round_total": r["round_total"],
+        "seconds": seconds,
+        "mode": r["mode"],
+        "game_type": r["game_type"],
+        "word_reveal_ms": reveal_ms,
+        "match_start_ts": r["match_start_ts"],
+    }, to=sid)
+
+    if seconds > 0:
+        socketio.start_background_task(pvp_round_timer_task, room_id, sid, token, seconds)
+
+
+def start_pvp_round_for_all(room_id: str):
+    r = rooms[room_id]
+    shared_word = choose_word_no_recent(r)
+    shared_line = random.choice(lignes_code)
+    for sid in list(r["players"].keys()):
+        start_pvp_round_for_player(room_id, sid, shared_word, shared_line)
+
+
+def check_pvp_end(room_id: str):
+    r = rooms[room_id]
+    if r["game_type"] != "pvp" or not r["started"]:
+        return
+    alive = [sid for sid in r["players"] if r["hp"].get(sid, MAX_HP) > 0]
+    if len(alive) <= 1 and len(r["players"]) > 0:
+        end_game(room_id)
+
+
 def start_new_round(room_id: str):
     r = rooms[room_id]
+    if r["game_type"] == "pvp":
+        return
     if not r["started"]:
         return
     if r["round_active"]:
@@ -240,7 +326,6 @@ def start_new_round(room_id: str):
     r["round_active"] = True
     r["round_token"] = generate_room_code(10)
     r["round_start_ts"] = time.time()
-    r["round_validated"] = set()
 
     seconds = get_time_limit(r)
 
@@ -272,6 +357,8 @@ def round_timer_task(room_id: str, token: str, seconds: int):
     if room_id not in rooms:
         return
     r = rooms[room_id]
+    if r["game_type"] != "coop":
+        return
     if r["round_active"] and r["round_token"] == token:
         r["round_active"] = False
         if r["game_type"] == "coop":
@@ -296,6 +383,11 @@ def end_game(room_id: str):
     r = rooms[room_id]
     r["round_active"] = False
     r["started"] = False
+    r["pvp_words"].clear()
+    r["pvp_lines"].clear()
+    r["pvp_round_index"].clear()
+    r["pvp_round_start_ts"].clear()
+    r["pvp_round_token"].clear()
 
     total_ms = 0
     if r["match_start_ts"] > 0:
@@ -355,6 +447,8 @@ def handle_join(data):
 
     socketio.emit("lobby_state", lobby_payload(room_id), room=room_id)
     emit_state(room_id)
+    if r["started"] and r["game_type"] == "pvp":
+        start_pvp_round_for_player(room_id, request.sid)
 
 
 @socketio.on("set_time_limit")
@@ -469,6 +563,11 @@ def start_game(data):
     r["round_active"] = False
     r["recent_words"] = []
     r["match_start_ts"] = time.time()
+    r["pvp_words"] = {}
+    r["pvp_lines"] = {}
+    r["pvp_round_index"] = {}
+    r["pvp_round_start_ts"] = {}
+    r["pvp_round_token"] = {}
 
     # reset scores + hp + firewall
     for sid in list(r["players"].keys()):
@@ -482,7 +581,10 @@ def start_game(data):
 
     socketio.emit("game_started", {"round_total": r["round_total"], "mode": r["mode"]}, room=room_id)
     emit_state(room_id)
-    start_new_round(room_id)
+    if r["game_type"] == "pvp":
+        start_pvp_round_for_all(room_id)
+    else:
+        start_new_round(room_id)
 
 
 @socketio.on("player_input")
@@ -493,24 +595,25 @@ def handle_input(data):
     if room_id not in rooms:
         return
     r = rooms[room_id]
-    if not r["round_active"]:
-        return
+    if r["game_type"] == "coop":
+        if not r["round_active"]:
+            return
+        current_word = r["current_word"]
+        round_start_ts = r["round_start_ts"]
+    else:
+        current_word = r["pvp_words"].get(request.sid)
+        if not current_word:
+            return
+        round_start_ts = r["pvp_round_start_ts"].get(request.sid, time.time())
 
     # si joueur déjà KO, ignore
     if r["hp"].get(request.sid, MAX_HP) <= 0:
         return
 
-    # en pvp, si deja valide ce round, on ignore
-    if r["game_type"] == "pvp" and request.sid in r.get("round_validated", set()):
-        return
-
-    if text == r["current_word"]:
+    if text == current_word:
         # point au winner
-        if r["game_type"] == "pvp":
-            r.setdefault("round_validated", set()).add(request.sid)
-        else:
+        if r["game_type"] == "coop":
             r["round_active"] = False
-
         r["scores"][request.sid] = r["scores"].get(request.sid, 0) + 1
 
         if r["game_type"] == "coop":
@@ -532,7 +635,7 @@ def handle_input(data):
 
         # dégâts aux autres (plus rapide = plus de dégâts)
         time_limit_s = get_time_limit(r)
-        elapsed_ms = int((time.time() - r["round_start_ts"]) * 1000)
+        elapsed_ms = int((time.time() - round_start_ts) * 1000)
         ratio = 0.0
         if time_limit_s > 0:
             ratio = max(0.0, min(1.0, 1.0 - (elapsed_ms / (time_limit_s * 1000.0))))
@@ -540,13 +643,8 @@ def handle_input(data):
         win_damage = DAMAGE_ON_WIN + bonus
 
         for sid in r["players"].keys():
-            if sid == request.sid:
-                continue
-            if sid in r["round_validated"]:
-                continue
-            if r["hp"].get(sid, MAX_HP) <= 0:
-                continue
-            r["hp"][sid] = max(0, r["hp"].get(sid, MAX_HP) - win_damage)
+            if sid != request.sid:
+                r["hp"][sid] = max(0, r["hp"].get(sid, MAX_HP) - win_damage)
 
         # soin du gagnant uniquement en easy
         if r["mode"] == "easy" and HEAL_ON_WIN_EASY > 0:
@@ -556,15 +654,13 @@ def handle_input(data):
         socketio.emit("round_winner", {
             "player": winner_name,
             "ms": elapsed_ms,
-            "word": r["current_word"],
+            "word": current_word,
             "damage": win_damage
         }, room=room_id)
 
         emit_state(room_id)
-        alive = [sid for sid in r["players"] if r["hp"].get(sid, MAX_HP) > 0]
-        if alive and all(sid in r["round_validated"] for sid in alive):
-            r["round_active"] = False
-            socketio.start_background_task(_delayed_next_round, room_id, 0.7)
+        check_pvp_end(room_id)
+        start_pvp_round_for_player(room_id, request.sid)
 
     else:
         # erreur -> auto dégâts anti-bourrin
@@ -572,6 +668,7 @@ def handle_input(data):
             r["hp"][request.sid] = max(0, r["hp"].get(request.sid, MAX_HP) - DAMAGE_ON_WRONG)
             emit("wrong", {"damage": DAMAGE_ON_WRONG, "hp": r["hp"][request.sid]})
             emit_state(room_id)
+            check_pvp_end(room_id)
         elif r["game_type"] == "coop":
             dmg = coop_wrong_damage(r)
             r["hp"][request.sid] = max(0, r["hp"].get(request.sid, MAX_HP) - dmg)
@@ -589,12 +686,18 @@ def handle_disconnect():
             r["players"].pop(sid, None)
             r["scores"].pop(sid, None)
             r["hp"].pop(sid, None)
+            r["pvp_words"].pop(sid, None)
+            r["pvp_lines"].pop(sid, None)
+            r["pvp_round_index"].pop(sid, None)
+            r["pvp_round_start_ts"].pop(sid, None)
+            r["pvp_round_token"].pop(sid, None)
 
             if r["host_sid"] == sid:
                 r["host_sid"] = next(iter(r["players"].keys()), None)
 
             socketio.emit("lobby_state", lobby_payload(room_id), room=room_id)
             emit_state(room_id)
+            check_pvp_end(room_id)
 
             if len(r["players"]) == 0:
                 empty.append(room_id)
